@@ -106,6 +106,7 @@ npm run build
 | --- | --- | --- |
 | `npm error engine Unsupported engine` | Node anterior a 18 | Instalar Node 18 o posterior. El paquete es ESM puro y `type: module` |
 | `npm error cannot find module .../dist/stdio.js` al arrancar | Se instaló una tarball empaquetada sin compilar | No ocurre con las versiones publicadas: el script `prepack` compila antes de empaquetar. Si se ve, es una instalación local de una tarball creada a mano |
+| `EACCES` al escribir en la caché de npm (`.../_cacache/tmp`) al iniciar con `npx` | El usuario que ejecuta el cliente MCP no puede escribir en la caché configurada para npm en ese host | Añadir `npm_config_cache` al bloque `env` de ese servidor y asignarle una ruta que el usuario del cliente pueda crear y escribir. Esto corrige permisos de instalación del host; no cambia las credenciales ni los permisos de App Store Connect |
 | `command not found: appstoreconnect-mcp` tras `npm install --global` | El directorio global de npm no está en el `PATH` | Comprobar `npm bin -g` (o `npm prefix -g`) y añadirlo al `PATH` |
 | `npx` se queda colgado sin responder | Se está esperando una entrada por `stdin` | Es el comportamiento normal: el servidor espera tramas JSON-RPC. Ctrl+C para salir |
 
@@ -176,6 +177,7 @@ Configuración de cliente MCP:
       "command": "npx",
       "args": ["-y", "@davidneyra2804/appstoreconnect-mcp"],
       "env": {
+        "npm_config_cache": "/ruta/escribible/por/el/usuario-del-cliente/npm-cache",
         "APPLE_KEY_ID": "...",
         "APPLE_ISSUER_ID": "...",
         "APPLE_PRIVATE_KEY_PATH": "/ruta/a/la/clave.p8"
