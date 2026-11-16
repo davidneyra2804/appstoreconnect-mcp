@@ -12,21 +12,22 @@ permite registrar, ninguna herramienta de escritura.
 
 Este repositorio recibe el código por ramas (`feature/...`, `fix/...`) con PR a `main`.
 
-- Superficie actual: 6 herramientas de lectura sobre apps, versiones de App Store,
-  builds de TestFlight, grupos de beta y reseñas de clientes.
-- Todavía fuera de alcance: informes de ventas, métricas de analytics, transporte HTTP
-  con OAuth y cualquier operación de escritura.
+- Superficie actual: 7 herramientas de lectura sobre apps, versiones de App Store,
+  builds de TestFlight, grupos de beta, reseñas de clientes e informes de ventas.
+- Todavía fuera de alcance: métricas de analytics, transporte HTTP con OAuth y
+  cualquier operación de escritura.
 
 ## Alcance de esta fase
 
 | Incluido | Excluido (fases posteriores) |
 | --- | --- |
 | Transporte stdio local | Transporte HTTP / OAuth (referencia: upstream PR #6) |
-| `list_apps`, `get_app` | Informes de ventas (`get_sales_data`, referencia: upstream PR #5) |
-| `list_app_store_versions` | Métricas de analytics |
-| `list_builds` (TestFlight) | Operaciones de escritura |
+| `list_apps`, `get_app` | Métricas de analytics |
+| `list_app_store_versions` | Operaciones de escritura |
+| `list_builds` (TestFlight) | |
 | `list_beta_groups` (TestFlight) | |
 | `list_customer_reviews` | |
+| `get_sales_report` (informe diario de ventas) | |
 
 El servidor solo emite peticiones `GET` contra la API de App Store Connect. El cliente
 no contiene ningún método que haga `POST`, `PATCH`, `PUT` o `DELETE`.
@@ -39,11 +40,11 @@ estrellas, 12 forks), que sigue siendo la referencia del dominio. Comparación v
 
 | | upstream | este repositorio |
 | --- | --- | --- |
-| Herramientas | 15, de las cuales 3 de escritura | 6, todas de lectura |
+| Herramientas | 15, de las cuales 3 de escritura | 7, todas de lectura |
 | Transporte | HTTP, stdio y SSE, con OAuth2/Auth0 | stdio local |
 | Empaquetado | npm `@ryaker/appstore-connect-mcp`, Docker, Vercel, Smithery, MCP Registry | npm `@davidneyra2804/appstoreconnect-mcp`, sin publicar |
 | Autenticación | clave de API o OAuth2/Auth0 | clave de API (`.p8`) |
-| Pruebas | scripts contra la API real | suite con fixtures, sin red |
+| Pruebas | scripts contra la API real | suite con fixtures, sin red, en CI |
 
 Lo que este repositorio hace mejor:
 
@@ -53,14 +54,18 @@ Lo que este repositorio hace mejor:
 - **El alcance por app se comprueba antes de cualquier petición**, no después.
 - **`stdout` queda reservado al protocolo**; diagnósticos y trazas van a `stderr`, y los
   secretos se redactan antes de escribirse.
+- **El informe de ventas se lee como el informe que es**: TSV comprimido por gzip, con
+  subtipo `SUMMARY`, proceeds por moneda y sin sumar nunca importes de monedas distintas.
+  Upstream mantiene su equivalente roto en `main`; su PR #5 lo corrige.
 
-Pendiente de adoptar de upstream, con sus PR de referencia: informes de ventas (PR #5) y
-transporte HTTP con el servidor atado a `127.0.0.1` por defecto (PR #6).
+Pendiente de adoptar de upstream: el transporte HTTP con el servidor atado a `127.0.0.1`
+por defecto (PR #6). El requisito queda escrito en [Transporte HTTP](#transporte-http-fase-posterior).
 
 ## Requisitos
 
 - Node.js >= 18
 - Una clave de API de App Store Connect (`.p8`) y su `issuerId`
+- Para el informe de ventas, el número de proveedor (`APPLE_VENDOR_NUMBER`)
 
 ## Instalación
 
@@ -80,6 +85,7 @@ npm run build
 | `APPLE_BUNDLE_ID` | No | Restringe el servidor a una app por bundle id |
 | `APPLE_APP_ID` | No | Restringe el servidor a una app por su App Store Connect app id (el `id` del recurso `apps`) |
 | `APPLE_APP_STORE_SKU` | No | Restringe el servidor a una app por su App Store ID (el atributo `sku` del recurso `apps`) |
+| `APPLE_VENDOR_NUMBER` | No | Número de proveedor de la cuenta. Necesario para `get_sales_report` |
 | `LOG_LEVEL` | No | `debug`, `info`, `warn` o `error`. Por defecto `info` |
 
 \* Configure una de las dos, no ambas.
@@ -158,9 +164,51 @@ Todas las herramientas son de lectura.
 | `list_builds` | `appId` | Builds de TestFlight, más recientes primero |
 | `list_beta_groups` | `appId` | Grupos de beta de TestFlight |
 | `list_customer_reviews` | `appId`, `limit` (opcional, 1–200, por defecto 50) | Reseñas de clientes |
+| `get_sales_report` | `appId`, `date` (opcional, `YYYY-MM-DD`, por defecto ayer) | Unidades y proceeds por moneda del informe diario de ventas |
 
-Un argumento desconocido o fuera de rango se rechaza antes de emitir cualquier
+Un argumento desconocido, ausente o fuera de rango se rechaza antes de emitir cualquier
 petición de red.
+
+## Informe de ventas
+
+`get_sales_report` lee el informe diario de ventas de la cuenta. El informe de Apple no es
+JSON: es un **TSV comprimido con gzip**, con las columnas nombradas y con filas de varias
+monedas mezcladas.
+
+- Se pide el subtipo `SUMMARY` y la frecuencia `DAILY`. Sin `filter[reportSubType]` Apple
+  responde `400`.
+- El número de proveedor se toma de `APPLE_VENDOR_NUMBER`. No es el `issuerId` ni el App
+  Store ID: Apple rechaza la petición con el valor equivocado.
+- Las columnas se leen por nombre, no por posición, y cada columna admite varias
+  grafías (`Units`/`Quantity`, `Developer Proceeds`/`Proceeds`, `SKU`/`Apple Identifier`).
+- **Los importes nunca se suman entre monedas.** Cada moneda tiene su propia cifra, y los
+  importes se redondean a céntimos en cada paso, para que la aritmética binaria no desplace
+  el resultado.
+- La fecha por defecto es **ayer**: Apple genera el informe diario durante el día
+  siguiente, así que el informe de hoy todavía no existe.
+- Se distinguen dos casos que Apple responde igual con un `404`: un día **sin ventas** y un
+  informe **aún no generado**. Solo el detalle del error los separa.
+
+El informe pertenece a la cuenta, no a una app: lista todas las apps del proveedor. La
+herramienta es de alcance por app, así que solo devuelve las unidades y los proceeds de la
+app solicitada y nunca los de otra.
+
+El análisis de TSV, gzip y multicolumna vive en `src/sales-report.ts` y está cubierto por
+pruebas deterministas: fixtures sintéticos con el layout de columnas de Apple, sin red y
+sin credenciales reales.
+
+## Transporte HTTP (fase posterior)
+
+El transporte HTTP **no está implementado**. Cuando se aborde, quedan fijados estos
+requisitos:
+
+- **Escucha en `127.0.0.1` por defecto**, nunca en `0.0.0.0`. `HOST` documentado para
+  cambiarlo de forma explícita.
+- **OAuth es condición para exponerlo.** Un servidor HTTP sin autenticación no se
+  publica: upstream acepta peticiones sin autenticar cuando `OAUTH_ENABLED` no está
+  definido, y ese hueco no se reproduce aquí.
+
+Referencia: upstream PR #6.
 
 ## Seguridad de los logs
 
@@ -183,6 +231,12 @@ npx tsc -p tsconfig.test.json   # comprobación de tipos de src/ y test/
 
 La suite usa fixtures y una clave ES256 generada en memoria. No se usa ninguna credencial
 real de Apple.
+
+## CI
+
+`.github/workflows/ci.yml` ejecuta `npm ci`, `npm run build`, `npx tsc -p tsconfig.test.json`
+y `npm test` en cada push a `main` y en cada pull request, con la matriz de Node 18 y 20.
+El pipeline también comprueba que el repositorio no menciona a ninguna organización.
 
 ## Licencia
 

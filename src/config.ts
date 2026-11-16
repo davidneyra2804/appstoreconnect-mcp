@@ -31,6 +31,14 @@ export interface AppStoreConfig {
    * resource.
    */
   appStoreSku?: string;
+  /**
+   * Optional: the vendor number of the App Store Connect account.
+   *
+   * This is the number shown in App Store Connect under Payments and
+   * Financial Reports. It is NOT the issuer id and NOT the App Store ID:
+   * Apple rejects the sales report request when the wrong value is sent.
+   */
+  vendorNumber?: string;
 }
 
 export class ConfigError extends Error {
@@ -94,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppStoreConfig
   const bundleId = (env.APPLE_BUNDLE_ID ?? '').trim();
   const appId = (env.APPLE_APP_ID ?? '').trim();
   const appStoreSku = (env.APPLE_APP_STORE_SKU ?? '').trim();
+  const vendorNumber = (env.APPLE_VENDOR_NUMBER ?? '').trim();
 
   // `APPLE_APP_STORE_ID` was ambiguous: it was documented as the customer-facing
   // App Store ID (Apple's `sku`) but the tools address apps by the App Store
@@ -115,6 +124,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppStoreConfig
     ...(bundleId ? { bundleId } : {}),
     ...(appId ? { appId } : {}),
     ...(appStoreSku ? { appStoreSku } : {}),
+    ...(vendorNumber ? { vendorNumber } : {}),
   };
 }
 

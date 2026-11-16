@@ -12,11 +12,15 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { makeTestKeyPair } from './fixtures.js';
 
-const REPO_ROOT = resolve(import.meta.dirname, '..');
+// `import.meta.dirname` needs Node 20.11, and the CI matrix runs Node 18.
+// The file URL of this module gives the same directory on every supported
+// version.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_ENTRY = join(REPO_ROOT, 'dist', 'stdio.js');
 
 interface RunResult {
@@ -151,6 +155,7 @@ describe('stdio transport', () => {
     const names = (toolsResponse.result?.tools ?? []).map((tool) => tool.name).sort();
     assert.deepEqual(names, [
       'get_app',
+      'get_sales_report',
       'list_app_store_versions',
       'list_apps',
       'list_beta_groups',

@@ -47,6 +47,7 @@ export const APP_SCOPED_TOOLS = new Set([
   'list_builds',
   'list_beta_groups',
   'list_customer_reviews',
+  'get_sales_report',
 ]);
 
 /** Maximum number of reviews a single call may return. */
@@ -162,6 +163,34 @@ export const TOOLS: ToolDefinition[] = [
           description: `Maximum number of reviews to return (default ${DEFAULT_REVIEW_LIMIT}, maximum ${MAX_REVIEW_LIMIT}).`,
           minimum: 1,
           maximum: MAX_REVIEW_LIMIT,
+        },
+      },
+      required: ['appId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_sales_report',
+    description:
+      'Read the daily sales report of an app, as developer proceeds per currency. Read-only. ' +
+      'The date defaults to yesterday, because Apple generates the daily report the following day. ' +
+      'Returns the report status (available, no sales, or not generated yet), the units sold, ' +
+      'the developer proceeds per currency, and the breakdown by app. ' +
+      'Requires APPLE_VENDOR_NUMBER to be configured.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: {
+          type: 'string',
+          description:
+            'The App Store Connect app id: the opaque id of the apps resource, as listed by list_apps under "App id". It is not the customer-facing App Store ID.',
+          minLength: 1,
+        },
+        date: {
+          type: 'string',
+          description:
+            'The report date in YYYY-MM-DD format (optional, defaults to yesterday; Apple generates daily reports the next day).',
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$',
         },
       },
       required: ['appId'],

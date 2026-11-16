@@ -8,6 +8,11 @@
 import jwt from 'jsonwebtoken';
 import type { AppStoreConfig } from './config.js';
 import { Logger } from './logger.js';
+import {
+  classifyNotFound,
+  parseSalesReportGzipped,
+  type SalesReportSummary,
+} from './sales-report.js';
 
 export const DEFAULT_BASE_URL = 'https://api.appstoreconnect.apple.com';
 
@@ -203,6 +208,94 @@ export class AppStoreConnectClient {
     }
 
     return { data, included };
+  }
+
+  /**
+   * Perform a GET request that expects a non-JSON body.
+   *
+   * The sales report is served as a gzipped TSV, so it cannot go through the
+   * JSON reader. The request is still a GET, and the verb discipline of this
+   * client is unchanged.
+   */
+  private async getBinary(path: string, accept: string): Promise<Response> {
+    const url = path.startsWith('http') ? path : `${this.baseUrl}${path}`;
+    const token = this.buildToken();
+
+    this.logger.debug('GET request (binary)', { url });
+
+    const response = await this.fetchImpl(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: accept,
+      },
+    });
+
+    return response;
+  }
+
+  /**
+   * Read the daily sales report for a date.
+   *
+   * The report belongs to the vendor account, not to a single app, so this
+   * call is not app-scoped. The caller is responsible for the scope check.
+   *
+   * The vendor number is a property of the account, not of the issuer: it is
+   * the number shown in App Store Connect under Payments and Financial
+   * Reports. It is required, because Apple rejects the request without it.
+   */
+  async getSalesReport(date: string): Promise<SalesReportSummary> {
+    const vendorNumber = this.config.vendorNumber?.trim();
+    if (!vendorNumber) {
+      throw new ToolInputError(
+        'APPLE_VENDOR_NUMBER is not set. It is the vendor number shown in App Store Connect ' +
+          'under Payments and Financial Reports, and Apple rejects the sales report request without it.',
+      );
+    }
+
+    const query = new URLSearchParams({
+      'filter[frequency]': 'DAILY',
+      'filter[reportType]': 'SALES',
+      'filter[reportSubType]': 'SUMMARY',
+      'filter[vendorNumber]': vendorNumber,
+      'filter[reportDate]': date,
+    });
+
+    const response = await this.getBinary(`/v1/salesReports?${query.toString()}`, 'application/a-gzip');
+
+    if (response.status === 404) {
+      // Apple answers 404 both for a day without sales and for a report that
+      // has not been produced yet. Only the detail tells them apart.
+      let detail = '';
+      try {
+        const body = (await response.json()) as { errors?: { detail?: string }[] };
+        detail = body.errors?.[0]?.detail ?? '';
+      } catch {
+        detail = '';
+      }
+
+      const status = classifyNotFound(detail);
+      this.logger.info('Sales report not available', { date, status });
+
+      return {
+        status,
+        date,
+        units: 0,
+        proceeds: {},
+        byApp: [],
+        missingColumns: [],
+        rowCount: 0,
+      };
+    }
+
+    if (!response.ok) {
+      const error = await parseErrorResponse(response);
+      this.logger.warn('Sales report request failed', { date, status: error.status });
+      throw new AppStoreApiException(error);
+    }
+
+    const body = Buffer.from(await response.arrayBuffer());
+    return parseSalesReportGzipped(body, date);
   }
 
   /** List the apps visible to the configured account. */

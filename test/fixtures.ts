@@ -57,6 +57,17 @@ export class FakeAppStoreApi {
     return this;
   }
 
+  /**
+   * Register a binary response for a path prefix.
+   *
+   * The sales report is served as a gzipped TSV, so it cannot travel through
+   * the JSON helper.
+   */
+  onBinary(pathPrefix: string, body: Uint8Array | Buffer, contentType: string): this {
+    this.routes.set(pathPrefix, () => ({ __binary: body, __contentType: contentType }));
+    return this;
+  }
+
   /** The fetch implementation to inject into the client. */
   get fetch(): (url: string, init: RequestInit) => Promise<Response> {
     return async (url, init) => {
@@ -95,6 +106,14 @@ export class FakeAppStoreApi {
 
   /** Build the Response for a matched route. */
   private respond(result: unknown, _prefix: string): Response {
+    if (result && typeof result === 'object' && '__binary' in result) {
+      const binary = result as { __binary: Uint8Array | Buffer; __contentType: string };
+      return new Response(binary.__binary, {
+        status: 200,
+        headers: { 'content-type': binary.__contentType },
+      });
+    }
+
     if (result && typeof result === 'object' && '__status' in result) {
       const error = result as { __status: number; __body?: unknown };
       return new Response(JSON.stringify(error.__body), {

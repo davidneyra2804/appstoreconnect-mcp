@@ -1,0 +1,60 @@
+name: CI
+
+# The repository had no pipeline: the test suite was only ever run by hand,
+# so nothing rechecked what was delivered. This workflow runs on every push
+# to main and on every pull request.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20']
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install the dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck the sources and the tests
+        run: npx tsc -p tsconfig.test.json
+
+      - name: Test
+        run: npm test
+
+      - name: Check that the repository carries no organisation name
+        run: |
+          # The workflow file itself names the forbidden phrase, so it is the
+          # only path that is skipped.
+          matches=$(grep -rIl --exclude-dir=node_modules --exclude-dir=dist \
+            --exclude-dir=.git --exclude-dir=workflows \
+            -e 'VYR TECH SOLUTIONS' . || true)
+          if [ -n "$matches" ]; then
+            echo "::error::The repository must not mention VYR TECH SOLUTIONS:"
+            echo "$matches"
+            exit 1
+          fi
+          echo "No organisation name found in the tracked files."

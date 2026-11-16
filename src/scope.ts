@@ -90,12 +90,15 @@ export function checkAppScope(
  * Validate the arguments of a tool call before it reaches the client.
  *
  * Only the properties declared by the tool schema are accepted; an unknown
- * property is an error rather than a silently ignored argument.
+ * property is an error rather than a silently ignored argument. A required
+ * property that is missing is an error too, so a call without its app id
+ * never reaches the API.
  */
 export function validateToolArguments(
   toolName: string,
   schemaProperties: Record<string, unknown>,
   args: Record<string, unknown>,
+  required: string[] = [],
 ): void {
   const known = new Set(Object.keys(schemaProperties));
 
@@ -103,6 +106,15 @@ export function validateToolArguments(
     if (!known.has(key)) {
       throw new ToolInputError(
         `Unknown argument "${key}" for tool "${toolName}". Accepted arguments: ${[...known].join(', ') || '(none)'}.`,
+      );
+    }
+  }
+
+  for (const key of required) {
+    const value = args[key];
+    if (value === undefined || value === null || value === '') {
+      throw new ToolInputError(
+        `Missing required argument "${key}" for tool "${toolName}".`,
       );
     }
   }

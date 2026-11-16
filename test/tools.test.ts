@@ -432,6 +432,23 @@ describe('error handling', () => {
     const result = await client.callTool({ name: 'get_app', arguments: {} });
 
     assert.equal(result.isError, true);
+    assert.match(textOf(result), /Missing required argument "appId"/);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('rejects a missing required argument before any request', async () => {
+    const api = new FakeAppStoreApi();
+
+    const { client, server } = await connect(api);
+    await client.callTool({ name: 'get_app', arguments: {} });
+
+    assert.equal(
+      api.requests.length,
+      0,
+      'A call without its required argument must not reach the API',
+    );
 
     await client.close();
     await server.close();

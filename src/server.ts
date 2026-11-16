@@ -21,6 +21,7 @@ import {
 import type { AppStoreConfig } from './config.js';
 import { Logger } from './logger.js';
 import { checkAppScope, requiresAppScope, validateToolArguments } from './scope.js';
+import { formatProceeds } from './sales-report.js';
 import {
   DEFAULT_REVIEW_LIMIT,
   MAX_REVIEW_LIMIT,
@@ -73,7 +74,12 @@ export function createMcpServer(
         throw new ToolInputError(`Unknown tool: ${name}`);
       }
 
-      validateToolArguments(name, tool.inputSchema.properties, args);
+      validateToolArguments(
+        name,
+        tool.inputSchema.properties,
+        args,
+        tool.inputSchema.required ?? [],
+      );
       validateToolRangeArguments(name, args);
 
       const result = await dispatch(name, args, client, config, logger);
@@ -123,21 +129,64 @@ export function createMcpServer(
  * argument never produces a network call.
  */
 function validateToolRangeArguments(toolName: string, args: Record<string, unknown>): void {
-  if (toolName !== 'list_customer_reviews') return;
+  if (toolName === 'list_customer_reviews') {
+    const limit = args.limit;
+    if (limit === undefined || limit === null) return;
 
-  const limit = args.limit;
-  if (limit === undefined || limit === null) return;
+    if (
+      typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > MAX_REVIEW_LIMIT
+    ) {
+      throw new ToolInputError(
+        `Argument "limit" of tool "list_customer_reviews" must be an integer between 1 and ${MAX_REVIEW_LIMIT}.`,
+      );
+    }
 
-  if (
-    typeof limit !== 'number' ||
-    !Number.isInteger(limit) ||
-    limit < 1 ||
-    limit > MAX_REVIEW_LIMIT
-  ) {
-    throw new ToolInputError(
-      `Argument "limit" of tool "list_customer_reviews" must be an integer between 1 and ${MAX_REVIEW_LIMIT}.`,
-    );
+    return;
   }
+
+  if (toolName === 'get_sales_report') {
+    const date = args.date;
+    if (date === undefined || date === null) return;
+
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new ToolInputError(
+        'Argument "date" of tool "get_sales_report" must be a date in YYYY-MM-DD format.',
+      );
+    }
+
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || formatDate(parsed) !== date) {
+      throw new ToolInputError(
+        `Argument "date" of tool "get_sales_report" is not a real calendar date: "${date}".`,
+      );
+    }
+
+    const today = formatDate(new Date());
+    if (date > today) {
+      throw new ToolInputError(
+        `Argument "date" of tool "get_sales_report" is in the future ("${date}"). ` +
+          'Apple has no report for a date that has not happened.',
+      );
+    }
+  }
+}
+
+/** Format a date as `YYYY-MM-DD` in UTC. */
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * The default report date: yesterday.
+ *
+ * Apple generates the daily sales report during the following day, so a
+ * report for today does not exist yet.
+ */
+function defaultReportDate(now: Date = new Date()): string {
+  return formatDate(new Date(now.getTime() - 86_400_000));
 }
 
 /**
@@ -248,6 +297,61 @@ async function dispatch(
       );
       logger.debug('Rendered reviews', { count: reviews.length, limit: requested });
       return `${reviews.length} customer review(s) for app ${appId}:\n\n${lines.join('\n\n')}`;
+    }
+
+    case 'get_sales_report': {
+      const appId = String(args.appId);
+      const date = args.date === undefined ? defaultReportDate() : String(args.date);
+      const report = await client.getSalesReport(date);
+
+      if (report.status === 'not_generated') {
+        return (
+          `The sales report for ${report.date} has not been generated yet. ` +
+          'Apple produces the daily sales report during the following day.'
+        );
+      }
+
+      if (report.status === 'no_sales') {
+        return `The sales report for ${report.date} contains no sales.`;
+      }
+
+      // The report belongs to the vendor account and lists every app of that
+      // account. Only the rows of the app in scope are reported, so a scoped
+      // read never discloses the sales of another app.
+      const scoped = report.byApp.filter((row) => row.sku === appId);
+
+      if (report.byApp.length > 0 && scoped.length === 0) {
+        return (
+          `The sales report for ${report.date} contains no sales for app ${appId}. ` +
+          `The report lists ${report.byApp.length} app(s) of the vendor account, ` +
+          'and none of them is the requested app.'
+        );
+      }
+
+      const units = scoped.reduce((sum, row) => sum + row.units, 0);
+      const proceeds: Record<string, number> = {};
+
+      for (const row of scoped) {
+        for (const [currency, amount] of Object.entries(row.proceeds)) {
+          proceeds[currency] = (proceeds[currency] ?? 0) + amount;
+        }
+      }
+
+      const lines = [
+        `Date: ${report.date}`,
+        `Units: ${units}`,
+        `Developer proceeds: ${formatProceeds(proceeds)}`,
+        `Rows in report: ${report.rowCount}`,
+      ];
+
+      if (report.byApp.length > 1) {
+        lines.push(
+          `Note: the report covers ${report.byApp.length} apps of the vendor account. ` +
+            'The units and the proceeds above are for the requested app only.',
+        );
+      }
+
+      return lines.join('\n');
     }
 
     default:

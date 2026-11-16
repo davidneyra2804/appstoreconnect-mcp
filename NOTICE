@@ -55,7 +55,12 @@ none of it is reproduced in this repository:
     (https://github.com/ryaker/appstore-connect-mcp/pull/4) — the idea of a
     separate stdio entrypoint that keeps stdout reserved for the protocol.
   * upstream pull request #5 "Fix get_sales_data: vendor number, report
-    subtype, gzipped TSV" — sales report handling. Out of scope for this MVP.
+    subtype, gzipped TSV" — sales report handling. Reviewed as prior art for
+    the report contract (vendor number, report subtype, gzip, TSV layout).
+    The implementation in this repository is independent: it reads the report
+    by named column, keeps one amount per currency, rounds to cents, and
+    separates "no sales that day" from "report not generated yet". No upstream
+    source file was copied.
   * upstream pull request #6 "Bind the HTTP server to 127.0.0.1 by default" —
     HTTP transport hardening. The HTTP transport is out of scope for this MVP.
   * upstream issue #3 "Error when running using npx" — the packaging problem
