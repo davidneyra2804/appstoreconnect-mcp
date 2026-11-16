@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -116,6 +116,28 @@ describe('stdio transport', () => {
     assert.equal(response.id, 1);
     assert.equal(response.result.serverInfo.name, 'appstoreconnect-mcp-readonly');
     assert.deepEqual(Object.keys(response.result.capabilities as object), ['tools']);
+  });
+
+  it('announces the package version in the handshake', async () => {
+    // The version must come from package.json. A constant written in the
+    // source drifts as soon as the package version moves, and the client
+    // would be told that it is running a release that is not installed.
+    const manifest = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'),
+    ) as { version: string };
+
+    const result = await runStdio([INITIALIZE]);
+
+    const lines = result.stdout.split('\n').filter((line) => line.trim() !== '');
+    const response = JSON.parse(lines[0]) as {
+      result: { serverInfo: { version: string } };
+    };
+
+    assert.equal(
+      response.result.serverInfo.version,
+      manifest.version,
+      'The handshake version does not match the package version',
+    );
   });
 
   it('keeps stdout free of diagnostics and puts them on stderr', async () => {

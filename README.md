@@ -360,6 +360,16 @@ publica, así que tiene que coincidir con la tag de la release; el workflow fall
 si no coinciden. La versión es inmutable en el registro: una versión publicada no
 se vuelve a publicar, y corregir algo exige una versión nueva.
 
+Para subir la versión:
+
+```bash
+npm version patch        # actualiza package.json y package-lock.json
+```
+
+La versión que el servidor anuncia en el saludo MCP se lee de `package.json` en
+tiempo de ejecución, así que un cliente ve siempre la versión del paquete que
+tiene instalado, no una constante que pueda quedarse desfasada.
+
 ### Alternativa: `npm stage publish`
 
 npm recomienda una variante de Trusted Publishing en la que la CI **solo**
