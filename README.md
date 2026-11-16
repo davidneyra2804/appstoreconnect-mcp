@@ -42,7 +42,7 @@ estrellas, 12 forks), que sigue siendo la referencia del dominio. Comparación v
 | --- | --- | --- |
 | Herramientas | 15, de las cuales 3 de escritura | 7, todas de lectura |
 | Transporte | HTTP, stdio y SSE, con OAuth2/Auth0 | stdio local |
-| Empaquetado | npm `@ryaker/appstore-connect-mcp`, Docker, Vercel, Smithery, MCP Registry | npm `@davidneyra2804/appstoreconnect-mcp`, sin publicar |
+| Empaquetado | npm `@ryaker/appstore-connect-mcp`, Docker, Vercel, Smithery, MCP Registry | npm `@davidneyra2804/appstoreconnect-mcp` |
 | Autenticación | clave de API o OAuth2/Auth0 | clave de API (`.p8`) |
 | Pruebas | scripts contra la API real | suite con fixtures, sin red, en CI |
 
@@ -68,6 +68,20 @@ por defecto (PR #6). El requisito queda escrito en [Transporte HTTP](#transporte
 - Para el informe de ventas, el número de proveedor (`APPLE_VENDOR_NUMBER`)
 
 ## Instalación
+
+Desde npm, una vez publicado:
+
+```bash
+npm install --global @davidneyra2804/appstoreconnect-mcp
+```
+
+O sin instalar nada, con `npx`:
+
+```bash
+npx -y @davidneyra2804/appstoreconnect-mcp
+```
+
+Desde el código:
 
 ```bash
 npm install
@@ -237,6 +251,28 @@ real de Apple.
 `.github/workflows/ci.yml` ejecuta `npm ci`, `npm run build`, `npx tsc -p tsconfig.test.json`
 y `npm test` en cada push a `main` y en cada pull request, con la matriz de Node 18 y 20.
 El pipeline también comprueba que el repositorio no menciona a ninguna organización.
+
+## Publicación
+
+El paquete se publica en el registro público de npm como
+`@davidneyra2804/appstoreconnect-mcp`.
+
+`.github/workflows/publish.yml` publica cuando se publica una release (o a mano,
+con `workflow_dispatch`). La autenticación usa OIDC: npm cambia la identidad del
+runner por un token de publicación de corta duración, así que el repositorio no
+guarda ningún secreto de npm. npm exige la CLI 11.5.1 o posterior y Node 22.14 o
+posterior, y el workflow instala la última versión de npm antes de publicar.
+
+La publicación genera un artefacto de procedencia (`--provenance`): npm firma de
+forma criptográfica que el tarball salió de este repositorio y de este workflow.
+
+La primera versión hay que publicarla a mano, con `npm login` y `npm publish
+--access public`, porque un *trusted publisher* solo se puede configurar en npm
+una vez que el paquete ya existe. A partir de ahí, las siguientes versiones salen
+solas desde la release.
+
+El número de versión de `package.json` es el que se publica; conviene que coincida
+con la tag de la release.
 
 ## Licencia
 
