@@ -1,0 +1,65 @@
+NOTICE
+======
+
+This project is licensed under the MIT License. See the LICENSE file.
+
+Upstream attribution
+--------------------
+
+This project was written as a read-only MVP for VYR TECH SOLUTIONS, informed by
+the prior art of the following project:
+
+    ryaker/appstore-connect-mcp
+    https://github.com/ryaker/appstore-connect-mcp
+    Copyright (c) 2024 Joshua Riley
+    Licensed under the MIT License
+
+The upstream project is licensed under the MIT License, Copyright (c) 2024
+Joshua Riley. Its MIT licence text is reproduced below, as required by the
+licence terms.
+
+The MIT License (MIT)
+
+Copyright (c) 2024 Joshua Riley
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Relationship to upstream
+------------------------
+
+The two codebases have unrelated Git histories and no common ancestor. No
+upstream commit was merged, cherry-picked or rewritten here. This repository
+contains an independent implementation of a read-only subset of the same
+domain, written against the public App Store Connect API.
+
+The following upstream work was reviewed as prior art and informed the design;
+none of it is reproduced in this repository:
+
+  * upstream pull request #4 "Add a stdio entrypoint and bin so npx works"
+    (https://github.com/ryaker/appstore-connect-mcp/pull/4) — the idea of a
+    separate stdio entrypoint that keeps stdout reserved for the protocol.
+  * upstream pull request #5 "Fix get_sales_data: vendor number, report
+    subtype, gzipped TSV" — sales report handling. Out of scope for this MVP.
+  * upstream pull request #6 "Bind the HTTP server to 127.0.0.1 by default" —
+    HTTP transport hardening. The HTTP transport is out of scope for this MVP.
+  * upstream issue #3 "Error when running using npx" — the packaging problem
+    that the stdio entrypoint addresses.
+
+The upstream source files were not copied. The App Store Connect API paths and
+the JSON:API response shapes used here are Apple's public interface.

@@ -1,0 +1,52 @@
+{
+  "name": "@vyrtech/appstoreconnect-mcp",
+  "version": "0.1.0",
+  "description": "Read-only MCP stdio server for the Apple App Store Connect API (VYR TECH SOLUTIONS)",
+  "main": "dist/index.js",
+  "type": "module",
+  "mcpName": "io.github.vyrtech/appstoreconnect-mcp",
+  "author": "VYR TECH SOLUTIONS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davidneyra2804/appstoreconnect-mcp.git"
+  },
+  "homepage": "https://github.com/davidneyra2804/appstoreconnect-mcp",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "apple",
+    "app-store-connect",
+    "read-only"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/stdio.ts",
+    "start": "node dist/stdio.js",
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.11.24",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "appstoreconnect-mcp": "dist/stdio.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ]
+}
