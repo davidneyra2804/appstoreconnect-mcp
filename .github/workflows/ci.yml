@@ -47,13 +47,14 @@ jobs:
 
       - name: Check that the repository carries no organisation name
         run: |
-          # The workflow file itself names the forbidden phrase, so it is the
-          # only path that is skipped.
-          matches=$(grep -rIl --exclude-dir=node_modules --exclude-dir=dist \
-            --exclude-dir=.git --exclude-dir=workflows \
-            -e 'VYR TECH SOLUTIONS' . || true)
+          # The name is expressed as a pattern instead of being written out, so
+          # this workflow file does not carry it either and no path has to be
+          # excluded from the check.
+          matches=$(grep -rIE --exclude-dir=node_modules --exclude-dir=dist \
+            --exclude-dir=.git \
+            -e 'VYR[ ]TECH[ ]SOLUTIONS' . || true)
           if [ -n "$matches" ]; then
-            echo "::error::The repository must not mention VYR TECH SOLUTIONS:"
+            echo "::error::The repository must not carry the name of an organisation:"
             echo "$matches"
             exit 1
           fi
