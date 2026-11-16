@@ -3,7 +3,7 @@
 Servidor MCP (Model Context Protocol) de **solo lectura** para la API de App Store Connect
 de Apple. Transporte local **stdio**.
 
-Proyecto de **VYR TECH SOLUTIONS**.
+Proyecto personal de **David Neyra**.
 
 ## Estado
 
@@ -12,22 +12,50 @@ permite registrar, ninguna herramienta de escritura.
 
 Este repositorio recibe el código por ramas (`feature/...`, `fix/...`) con PR a `main`.
 
-- Tarea principal: https://paperclip.davidneyra.dev/VYRA/issues/VYRA-47
-- Plan entregado: https://paperclip.davidneyra.dev/VYRA/issues/VYRA-48
+- Superficie actual: 6 herramientas de lectura sobre apps, versiones de App Store,
+  builds de TestFlight, grupos de beta y reseñas de clientes.
+- Todavía fuera de alcance: informes de ventas, métricas de analytics, transporte HTTP
+  con OAuth y cualquier operación de escritura.
 
 ## Alcance de esta fase
 
 | Incluido | Excluido (fases posteriores) |
 | --- | --- |
-| Transporte stdio local | Transporte HTTP / OAuth (PR upstream #6) |
-| `list_apps`, `get_app` | Informes de ventas (`get_sales_data`, PR upstream #5) |
+| Transporte stdio local | Transporte HTTP / OAuth (referencia: upstream PR #6) |
+| `list_apps`, `get_app` | Informes de ventas (`get_sales_data`, referencia: upstream PR #5) |
 | `list_app_store_versions` | Métricas de analytics |
-| `list_builds` (TestFlight) | |
+| `list_builds` (TestFlight) | Operaciones de escritura |
 | `list_beta_groups` (TestFlight) | |
 | `list_customer_reviews` | |
 
 El servidor solo emite peticiones `GET` contra la API de App Store Connect. El cliente
 no contiene ningún método que haga `POST`, `PATCH`, `PUT` o `DELETE`.
+
+## Comparación con `ryaker/appstore-connect-mcp`
+
+Este repositorio **no** es una copia ni un superconjunto de
+[ryaker/appstore-connect-mcp](https://github.com/ryaker/appstore-connect-mcp) (MIT, 60
+estrellas, 12 forks), que sigue siendo la referencia del dominio. Comparación verificada:
+
+| | upstream | este repositorio |
+| --- | --- | --- |
+| Herramientas | 15, de las cuales 3 de escritura | 6, todas de lectura |
+| Transporte | HTTP, stdio y SSE, con OAuth2/Auth0 | stdio local |
+| Empaquetado | npm `@ryaker/appstore-connect-mcp`, Docker, Vercel, Smithery, MCP Registry | npm `@davidneyra2804/appstoreconnect-mcp`, sin publicar |
+| Autenticación | clave de API o OAuth2/Auth0 | clave de API (`.p8`) |
+| Pruebas | scripts contra la API real | suite con fixtures, sin red |
+
+Lo que este repositorio hace mejor:
+
+- **La escritura no existe por construcción.** El inventario vive en `src/tools.ts` y la
+  suite comprueba que el conjunto registrado coincide exactamente con esa lista y que
+  ninguna herramienta de escritura está presente.
+- **El alcance por app se comprueba antes de cualquier petición**, no después.
+- **`stdout` queda reservado al protocolo**; diagnósticos y trazas van a `stderr`, y los
+  secretos se redactan antes de escribirse.
+
+Pendiente de adoptar de upstream, con sus PR de referencia: informes de ventas (PR #5) y
+transporte HTTP con el servidor atado a `127.0.0.1` por defecto (PR #6).
 
 ## Requisitos
 
@@ -95,7 +123,7 @@ Configuración de cliente MCP:
   "mcpServers": {
     "appstoreconnect": {
       "command": "npx",
-      "args": ["-y", "@vyrtech/appstoreconnect-mcp"],
+      "args": ["-y", "@davidneyra2804/appstoreconnect-mcp"],
       "env": {
         "APPLE_KEY_ID": "...",
         "APPLE_ISSUER_ID": "...",
