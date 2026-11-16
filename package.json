@@ -9,7 +9,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/davidneyra2804/appstoreconnect-mcp.git"
+    "url": "git+https://github.com/davidneyra2804/appstoreconnect-mcp.git"
   },
   "homepage": "https://github.com/davidneyra2804/appstoreconnect-mcp",
   "keywords": [
@@ -24,7 +24,7 @@
     "dev": "tsx src/stdio.ts",
     "start": "node dist/stdio.js",
     "test": "node --import tsx --test test/*.test.ts",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",

@@ -9,6 +9,9 @@ name: Publish
 #
 # The first version of a package has to be published by hand (npm login), since
 # a trusted publisher can only be configured once the package exists.
+#
+# The package version in package.json is the one that is published, so it has
+# to match the release tag. The job fails early if it does not.
 
 on:
   release:
@@ -48,5 +51,29 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Check that the version matches the release tag
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "::error::The release tag ($tag) and the package version ($version) do not match."
+            exit 1
+          fi
+          echo "The release tag and the package version agree: $version"
+
+      - name: Check that the tarball is complete
+        # The prepack script compiles the package, so the tarball always
+        # carries dist/ and the bin entry exists even from a clean checkout.
+        run: |
+          npm pack --dry-run
+          if [ ! -f dist/stdio.js ]; then
+            echo "::error::dist/stdio.js is missing; the bin entry would be broken."
+            exit 1
+          fi
+
       - name: Publish
-        run: npm publish --provenance
+        # --provenance is set here and not in publishConfig: npm only generates
+        # provenance inside GitHub Actions or GitLab CI, so pinning it in
+        # publishConfig would break a manual publish from a laptop.
+        run: npm publish --provenance --access public

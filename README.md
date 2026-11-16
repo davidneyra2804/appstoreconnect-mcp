@@ -81,12 +81,43 @@ O sin instalar nada, con `npx`:
 npx -y @davidneyra2804/appstoreconnect-mcp
 ```
 
+El comando arranca el servidor MCP por stdio y no hace nada visible: habla por
+`stdin`/`stdout` con el protocolo MCP. Un cliente MCP lo lanza como proceso
+hijo, así que **no** se espera que la terminal muestre nada. Para comprobar que
+responde, hay que hablarle en JSON-RPC:
+
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}' \
+  | npx -y @davidneyra2804/appstoreconnect-mcp
+```
+
+La respuesta llega por `stdout` y los diagnósticos por `stderr`.
+
 Desde el código:
 
 ```bash
 npm install
 npm run build
 ```
+
+### Problemas habituales de instalación
+
+| Síntoma | Causa | Solución |
+| --- | --- | --- |
+| `npm error engine Unsupported engine` | Node anterior a 18 | Instalar Node 18 o posterior. El paquete es ESM puro y `type: module` |
+| `npm error cannot find module .../dist/stdio.js` al arrancar | Se instaló una tarball empaquetada sin compilar | No ocurre con las versiones publicadas: el script `prepack` compila antes de empaquetar. Si se ve, es una instalación local de una tarball creada a mano |
+| `command not found: appstoreconnect-mcp` tras `npm install --global` | El directorio global de npm no está en el `PATH` | Comprobar `npm bin -g` (o `npm prefix -g`) y añadirlo al `PATH` |
+| `npx` se queda colgado sin responder | Se está esperando una entrada por `stdin` | Es el comportamiento normal: el servidor espera tramas JSON-RPC. Ctrl+C para salir |
+
+### Problemas habituales de autenticación
+
+| Síntoma | Causa | Solución |
+| --- | --- | --- |
+| `Configuration error {message=Missing required environment variable(s): APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_PATH.}` en `stderr`, con `stdout` vacío | Falta la configuración obligatoria | Rellenar `APPLE_KEY_ID`, `APPLE_ISSUER_ID` y una de las dos variables de clave privada. El error sale en `stderr` y `stdout` queda vacío a propósito |
+| `401` o `403` al llamar a la API | La clave `.p8` no corresponde al `issuerId`, o la clave está revocada | Revisar que la clave y el `issuerId` son del mismo equipo de App Store Connect |
+| `403` con `GET /v1/apps` | La clave de API no tiene permiso de acceso a los recursos | Regenerar la clave en App Store Connect -> Integrations |
+| La clave se pasa por variable de entorno y no por fichero | `APPLE_PRIVATE_KEY` con el PEM en bruto o en base64 | Ambas formas valen. Para un fichero, `APPLE_PRIVATE_KEY_PATH` es lo más simple y evita el pegado de saltos de línea |
+| El servidor no ve las variables | El cliente MCP las pasa en su propio bloque `env` | Comprobar el bloque `env` de la configuración del cliente: el proceso hijo solo hereda lo que se declare ahí |
 
 ## Configuración
 
@@ -265,6 +296,9 @@ posterior, y el workflow instala la última versión de npm antes de publicar.
 
 La publicación genera un artefacto de procedencia (`--provenance`): npm firma de
 forma criptográfica que el tarball salió de este repositorio y de este workflow.
+El flag se pasa en el propio comando, **no** en `publishConfig`, porque npm solo
+genera procedencia dentro de GitHub Actions o GitLab CI: si se fijara en
+`publishConfig`, una publicación manual desde un portátil fallaría.
 
 La primera versión hay que publicarla a mano, con `npm login` y `npm publish
 --access public`, porque un *trusted publisher* solo se puede configurar en npm
@@ -272,7 +306,90 @@ una vez que el paquete ya existe. A partir de ahí, las siguientes versiones sal
 solas desde la release.
 
 El número de versión de `package.json` es el que se publica; conviene que coincida
-con la tag de la release.
+con la tag de la release. El workflow comprueba esa coincidencia y falla si no.
+
+### Trusted publishing: configuración en npm
+
+Se configura **en la página del paquete ya publicado**, no en este repositorio:
+
+1. Entrar en [npmjs.com](https://www.npmjs.com) con la cuenta que publica.
+2. Ir a **Packages** -> `@davidneyra2804/appstoreconnect-mcp` -> **Settings**.
+3. En **Trusted publishing**, activar el *trusted publisher* para GitHub Actions.
+4. Rellenar:
+   - **Organization or user account**: `davidneyra2804`
+   - **Repository**: `appstoreconnect-mcp`
+   - **Workflow filename**: `publish.yml` (solo el nombre del fichero, **sin** la
+     ruta `.github/workflows/`)
+5. Guardar.
+
+Puntos que hay que comprobar al configurarlo:
+
+- **Permisos de publicación.** Las configuraciones creadas a partir de
+  2026-09-03 vienen con **solo** `npm stage publish` permitido. Hay que marcar
+  explícitamente `npm publish` para que este workflow funcione tal cual.
+- **Caducidad.** La configuración **caduca** si no completa su primera publicación
+  en los 2 días siguientes a crearla.
+- **Cerrar el acceso por token.** Una vez configurado y probado el *trusted
+  publisher*, conviene ir a **Settings -> Publishing access** y desactivar la
+  publicación con token: la OIDC queda como único camino y deja de haber un token
+  de larga vida que se pueda filtrar.
+- **La primera publicación hay que hacla a mano**, porque el *trusted publisher*
+  solo se puede crear una vez que el paquete existe en el registro.
+
+### Publicar una versión
+
+El flujo normal es:
+
+1. Subir el código a `main` con la versión ya subida en `package.json`.
+2. Crear la tag y la release de GitHub con el mismo número:
+   `git tag v0.2.0 && git push origin v0.2.0`, y publicar la release.
+3. La release dispara `.github/workflows/publish.yml`, que compila, comprueba los
+   tipos, pasa la suite, verifica la tarball y publica.
+
+Antes de publicar, en local:
+
+```bash
+npm ci
+npm run build
+npm test
+npm pack --dry-run     # comprueba qué entra en la tarball
+```
+
+El paquete usa versionado semántico. El número de `package.json` es el que se
+publica, así que tiene que coincidir con la tag de la release; el workflow falla
+si no coinciden. La versión es inmutable en el registro: una versión publicada no
+se vuelve a publicar, y corregir algo exige una versión nueva.
+
+### Alternativa: `npm stage publish`
+
+npm recomienda una variante de Trusted Publishing en la que la CI **solo**
+empqueta y sube la versión a *staging*, y el propietario la aprueba con su 2FA
+desde la web. En esa variante:
+
+- npm solo permite `npm stage publish`, y `npm publish` queda deshabilitado.
+- El workflow usa `npm stage publish` en lugar de `npm publish`.
+- La versión queda pendiente en npmjs.com hasta que el propietario la aprueba.
+
+La ventaja es que nada llega a `latest` sin una confirmación humana explícita. La
+desventaja es un paso manual por versión y que el *staging* de npm no es un
+canal con SLA ni métricas como el registro normal.
+
+Para este paquete, que es de un solo mantenedor y publica pocas versiones, la
+opción recomendada es **Trusted Publishing con `npm publish` y aprobación por
+release de GitHub**: la tag de la release ya es el acto explícito y
+deliberado que autoriza la publicación, y el circuito es más corto. Conviene
+deshabilitar el acceso por token en npm una vez configurado, para que la OIDC sea
+el único camino.
+
+### Problemas habituales de publicación
+
+| Síntoma | Causa | Solución |
+| --- | --- | --- |
+| `npm error This command requires you to be logged in` | No hay *trusted publisher* configurado para este repositorio y este workflow, o falta el permiso `id-token: write` | Configurarlo en npmjs.com -> Packages -> Settings -> Trusted publishing, con el nombre de workflow `publish.yml` |
+| `npm error 402 Payment required` / `EOTP` | La versión ya existe en el registro | Subir la versión. Las versiones publicadas son inmutables |
+| `npm error Invalid package name` o `cannot publish over` | La versión de `package.json` no coincide con la de la tag, o la versión ya está publicada | Revisar la tag y la versión de `package.json` |
+| `npm warn No bin file found at dist/stdio.js` | La tarball se empaquetó sin compilar | `prepack` compila antes de empaquetar. Si aparece, es que la compilación falló: mirar el paso de build |
+| `npm error unsupported engine` | Node anterior a 18 | Node 18 o posterior |
 
 ## Licencia
 
