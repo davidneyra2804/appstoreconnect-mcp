@@ -1,0 +1,52 @@
+name: Publish
+
+# Publishes the package to the public npm registry.
+#
+# Authentication uses OIDC (npm trusted publishing): npm exchanges this
+# runner's identity token for a short-lived publish token, so no npm secret is
+# stored in this repository. For that to work, a trusted publisher must be
+# configured on npmjs.com for this repository and this workflow filename.
+#
+# The first version of a package has to be published by hand (npm login), since
+# a trusted publisher can only be configured once the package exists.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install npm
+        # Trusted publishing needs npm CLI 11.5.1 or later and Node 22.14 or later.
+        run: npm install --global npm@latest
+
+      - name: Install the dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck the sources and the tests
+        run: npx tsc -p tsconfig.test.json
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        run: npm publish --provenance
