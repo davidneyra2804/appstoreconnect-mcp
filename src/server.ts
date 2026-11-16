@@ -12,6 +12,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { createRequire } from 'node:module';
 import {
   AppStoreApiException,
   AppStoreConnectClient,
@@ -30,7 +31,32 @@ import {
 } from './tools.js';
 
 export const SERVER_NAME = 'appstoreconnect-mcp-readonly';
-export const SERVER_VERSION = '0.1.0';
+
+/**
+ * Version reported in the MCP handshake.
+ *
+ * It is read from package.json instead of being written here, so the server
+ * always announces the version that was actually published. A hardcoded
+ * constant drifts: the package version moves with every release and the
+ * server would keep announcing the version of the first one.
+ *
+ * package.json sits one level above dist/, both in the repository and in the
+ * published package, so it is resolved relative to this module.
+ */
+export const SERVER_VERSION = readPackageVersion();
+
+function readPackageVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    const manifest = require('../package.json') as { version?: unknown };
+    if (typeof manifest.version === 'string' && manifest.version.length > 0) {
+      return manifest.version;
+    }
+  } catch {
+    // The manifest is missing or unreadable: fall through to the fallback.
+  }
+  return '0.0.0-unknown';
+}
 
 export interface ServerOptions extends ClientOptions {
   logger?: Logger;

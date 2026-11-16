@@ -360,6 +360,32 @@ publica, así que tiene que coincidir con la tag de la release; el workflow fall
 si no coinciden. La versión es inmutable en el registro: una versión publicada no
 se vuelve a publicar, y corregir algo exige una versión nueva.
 
+Para subir la versión:
+
+```bash
+npm version patch        # actualiza package.json y package-lock.json
+```
+
+La versión que el servidor anuncia en el saludo MCP se lee de `package.json` en
+tiempo de ejecución, así que un cliente ve siempre la versión del paquete que
+tiene instalado, no una constante que pueda quedarse desfasada.
+
+### La versión `0.0.0-stage` que aparece en el registro
+
+El registro muestra además una versión `0.0.0-stage` que no es una versión
+real: es un marcador de dos ficheros (~357 bytes) que quedó al probar el
+flujo de *staging* de npm. No está en `latest` y no afecta a la instalación ni
+a `npx`, pero se ve al listar las versiones.
+
+Se puede rechazar, y solo lo puede hacer el propietario:
+
+```bash
+npm stage list                       # ver el stage pendiente
+npm stage reject <stage-id>          # quitarlo del registro
+```
+
+Rechazarlo es una decisión del mantenedor, no un paso obligatorio.
+
 ### Alternativa: `npm stage publish`
 
 npm recomienda una variante de Trusted Publishing en la que la CI **solo**
