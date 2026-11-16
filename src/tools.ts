@@ -77,7 +77,8 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         appId: {
           type: 'string',
-          description: 'The App Store Connect app id (the numeric id in /v1/apps).',
+          description:
+            'The App Store Connect app id: the opaque id of the apps resource, as listed by list_apps under "App id". It is not the customer-facing App Store ID.',
           minLength: 1,
         },
       },
@@ -95,7 +96,8 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         appId: {
           type: 'string',
-          description: 'The App Store Connect app id.',
+          description:
+            'The App Store Connect app id: the opaque id of the apps resource, as listed by list_apps under "App id". It is not the customer-facing App Store ID.',
           minLength: 1,
         },
       },
@@ -113,7 +115,8 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         appId: {
           type: 'string',
-          description: 'The App Store Connect app id.',
+          description:
+            'The App Store Connect app id: the opaque id of the apps resource, as listed by list_apps under "App id". It is not the customer-facing App Store ID.',
           minLength: 1,
         },
       },
@@ -131,7 +134,8 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         appId: {
           type: 'string',
-          description: 'The App Store Connect app id.',
+          description:
+            'The App Store Connect app id: the opaque id of the apps resource, as listed by list_apps under "App id". It is not the customer-facing App Store ID.',
           minLength: 1,
         },
       },
@@ -149,7 +153,8 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         appId: {
           type: 'string',
-          description: 'The App Store Connect app id.',
+          description:
+            'The App Store Connect app id: the opaque id of the apps resource, as listed by list_apps under "App id". It is not the customer-facing App Store ID.',
           minLength: 1,
         },
         limit: {

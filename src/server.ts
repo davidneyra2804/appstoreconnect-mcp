@@ -152,7 +152,7 @@ async function resolveScopedApp(
   client: AppStoreConnectClient,
   config: AppStoreConfig,
 ): Promise<void> {
-  if (!config.bundleId && !config.appStoreId) {
+  if (!config.bundleId && !config.appId && !config.appStoreSku) {
     return;
   }
 

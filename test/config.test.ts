@@ -66,11 +66,41 @@ describe('configuration', () => {
       APPLE_ISSUER_ID: 'I',
       APPLE_PRIVATE_KEY: privateKey,
       APPLE_BUNDLE_ID: 'com.example.app',
-      APPLE_APP_STORE_ID: '123',
+      APPLE_APP_ID: '1234567890',
+      APPLE_APP_STORE_SKU: '123',
     } as NodeJS.ProcessEnv);
 
     assert.equal(config.bundleId, 'com.example.app');
-    assert.equal(config.appStoreId, '123');
+    assert.equal(config.appId, '1234567890');
+    assert.equal(config.appStoreSku, '123');
+  });
+
+  it('rejects the ambiguous APPLE_APP_STORE_ID with a precise message', () => {
+    const { privateKey } = makeTestKeyPair();
+
+    assert.throws(
+      () =>
+        loadConfig({
+          APPLE_KEY_ID: 'K',
+          APPLE_ISSUER_ID: 'I',
+          APPLE_PRIVATE_KEY: privateKey,
+          APPLE_APP_STORE_ID: '123',
+        } as NodeJS.ProcessEnv),
+      /APPLE_APP_STORE_ID is ambiguous[\s\S]*APPLE_APP_ID[\s\S]*APPLE_APP_STORE_SKU/,
+    );
+  });
+
+  it('leaves the scope unset when no scope variable is given', () => {
+    const { privateKey } = makeTestKeyPair();
+    const config = loadConfig({
+      APPLE_KEY_ID: 'K',
+      APPLE_ISSUER_ID: 'I',
+      APPLE_PRIVATE_KEY: privateKey,
+    } as NodeJS.ProcessEnv);
+
+    assert.equal(config.bundleId, undefined);
+    assert.equal(config.appId, undefined);
+    assert.equal(config.appStoreSku, undefined);
   });
 });
 

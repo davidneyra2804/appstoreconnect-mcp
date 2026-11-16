@@ -1,15 +1,31 @@
 /**
  * Scope enforcement.
  *
- * When the server is configured with `APPLE_BUNDLE_ID` or `APPLE_APP_STORE_ID`,
- * every app-scoped tool is restricted to the account that owns that app. The
- * check happens before any request leaves the process, so a tool call for an
- * app outside the configured scope never reaches the API.
+ * When the server is configured with `APPLE_BUNDLE_ID`, `APPLE_APP_ID` or
+ * `APPLE_APP_STORE_SKU`, every app-scoped tool is restricted to the account
+ * that owns that app. The check happens before any request leaves the
+ * process, so a tool call for an app outside the configured scope never
+ * reaches the API.
  */
 
 import { ToolInputError } from './appstore-client.js';
 import type { AppStoreConfig } from './config.js';
 import { APP_SCOPED_TOOLS } from './tools.js';
+
+/**
+ * The identifiers of a resolved `apps` resource that the scope can be
+ * checked against.
+ *
+ * `id` is the App Store Connect resource id, the opaque value that
+ * `/v1/apps/{id}` takes and the value every tool passes as `appId`.
+ * `sku` is the customer-facing App Store ID, an attribute of the same
+ * resource.
+ */
+export interface ScopedApp {
+  id: string;
+  bundleId: string;
+  sku: string | null;
+}
 
 export interface ScopeDecision {
   allowed: boolean;
@@ -19,18 +35,22 @@ export interface ScopeDecision {
 /**
  * Check whether an app id may be read under the configured scope.
  *
- * The scope is account-level: the configured bundle id or App Store id
- * identifies one app of the account, so the allowed set is resolved by
- * comparing the app's own identifiers against the scope.
+ * The scope is account-level: the configured bundle id, App Store Connect
+ * app id or App Store ID identifies one app of the account, so the allowed
+ * set is resolved by comparing the app's own identifiers against the scope.
+ *
+ * Every configured scope must match. When more than one is set, all of them
+ * are checked, so a narrower scope cannot be widened by setting a second
+ * variable.
  */
 export function checkAppScope(
   appId: string,
-  app: { bundleId: string; sku: string | null } | null,
+  app: ScopedApp | null,
   config: AppStoreConfig,
 ): ScopeDecision {
-  const { bundleId, appStoreId } = config;
+  const { bundleId, appId: scopedAppId, appStoreSku } = config;
 
-  if (!bundleId && !appStoreId) {
+  if (!bundleId && !scopedAppId && !appStoreSku) {
     return { allowed: true };
   }
 
@@ -49,7 +69,14 @@ export function checkAppScope(
     };
   }
 
-  if (appStoreId && app.sku !== appStoreId) {
+  if (scopedAppId && app.id !== scopedAppId) {
+    return {
+      allowed: false,
+      reason: `App ${appId} has App Store Connect id "${app.id}", which is outside the configured scope.`,
+    };
+  }
+
+  if (appStoreSku && app.sku !== appStoreSku) {
     return {
       allowed: false,
       reason: `App ${appId} has App Store id "${app.sku}", which is outside the configured scope.`,

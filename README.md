@@ -50,7 +50,8 @@ npm run build
 | `APPLE_PRIVATE_KEY` | Sí\* | Contenido PEM de la clave `.p8` (raw o base64) |
 | `APPLE_PRIVATE_KEY_PATH` | Sí\* | Ruta al archivo `.p8`, en lugar de `APPLE_PRIVATE_KEY` |
 | `APPLE_BUNDLE_ID` | No | Restringe el servidor a una app por bundle id |
-| `APPLE_APP_STORE_ID` | No | Restringe el servidor a una app por App Store id |
+| `APPLE_APP_ID` | No | Restringe el servidor a una app por su App Store Connect app id (el `id` del recurso `apps`) |
+| `APPLE_APP_STORE_SKU` | No | Restringe el servidor a una app por su App Store ID (el atributo `sku` del recurso `apps`) |
 | `LOG_LEVEL` | No | `debug`, `info`, `warn` o `error`. Por defecto `info` |
 
 \* Configure una de las dos, no ambas.
@@ -60,9 +61,24 @@ en este repositorio.
 
 ### Restricción de alcance
 
-Si define `APPLE_BUNDLE_ID` o `APPLE_APP_STORE_ID`, el servidor comprueba el alcance de
-cada app antes de cualquier petición. Una app fuera del alcance se rechaza con un error
+Si define `APPLE_BUNDLE_ID`, `APPLE_APP_ID` o `APPLE_APP_STORE_SKU`, el servidor comprueba el
+alcance de cada app antes de cualquier petición. Una app fuera del alcance se rechaza con un error
 y no se emite ninguna llamada a la API para ese recurso.
+
+Los dos identificadores de app son distintos y no intercambiables:
+
+| Variable | Identificador | Dónde se ve |
+| --- | --- | --- |
+| `APPLE_APP_ID` | App Store Connect app id, el `id` opaco del recurso `apps` | Es el valor que las tools aceptan como `appId`. `list_apps` lo imprime como "App id" |
+| `APPLE_APP_STORE_SKU` | App Store ID, el atributo `sku` del recurso `apps` | El número que ve el usuario en App Store Connect y en la App Store. `list_apps` lo imprime como "App Store id" |
+
+Si define más de una, **todas** tienen que coincidir: el alcance no se puede ampliar definiendo una
+segunda variable.
+
+`APPLE_APP_STORE_ID` ya no se acepta. Era ambiguo (se documentaba como App Store ID pero las tools
+identifican la app por su `id`) y el servidor lo rechaza al arrancar con un mensaje que indica la
+variable correcta, en lugar de interpretar el valor de una forma que pudiera denegar la app
+permitida.
 
 ## Uso
 

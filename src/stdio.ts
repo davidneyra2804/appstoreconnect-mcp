@@ -54,7 +54,8 @@ async function main(): Promise<void> {
     keyId: config.keyId,
     issuerId: config.issuerId,
     bundleScoped: Boolean(config.bundleId),
-    appStoreScoped: Boolean(config.appStoreId),
+    appIdScoped: Boolean(config.appId),
+    appStoreSkuScoped: Boolean(config.appStoreSku),
   });
 
   const server = createMcpServer(config, { logger });

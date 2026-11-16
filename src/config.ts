@@ -16,8 +16,21 @@ export interface AppStoreConfig {
   privateKey: string;
   /** Optional: restrict every app-scoped tool to this bundle ID. */
   bundleId?: string;
-  /** Optional: restrict every app-scoped tool to this App Store ID. */
-  appStoreId?: string;
+  /**
+   * Optional: restrict every app-scoped tool to this App Store Connect
+   * resource id.
+   *
+   * This is the opaque `id` of the `apps` resource, the same value the
+   * `appId` argument of every tool takes. It is NOT the customer-facing
+   * App Store ID: see `appStoreSku`.
+   */
+  appId?: string;
+  /**
+   * Optional: restrict every app-scoped tool to this customer-facing App
+   * Store ID, which Apple exposes as the `sku` attribute of the `apps`
+   * resource.
+   */
+  appStoreSku?: string;
 }
 
 export class ConfigError extends Error {
@@ -79,14 +92,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppStoreConfig
   }
 
   const bundleId = (env.APPLE_BUNDLE_ID ?? '').trim();
-  const appStoreId = (env.APPLE_APP_STORE_ID ?? '').trim();
+  const appId = (env.APPLE_APP_ID ?? '').trim();
+  const appStoreSku = (env.APPLE_APP_STORE_SKU ?? '').trim();
+
+  // `APPLE_APP_STORE_ID` was ambiguous: it was documented as the customer-facing
+  // App Store ID (Apple's `sku`) but the tools address apps by the App Store
+  // Connect resource id. It is rejected with a precise message rather than
+  // silently interpreted, so a misconfigured scope never denies the wrong app.
+  const deprecated = (env.APPLE_APP_STORE_ID ?? '').trim();
+  if (deprecated) {
+    throw new ConfigError(
+      'APPLE_APP_STORE_ID is ambiguous and is no longer accepted. ' +
+        'Use APPLE_APP_ID for the App Store Connect app id (the value the tools take as appId), ' +
+        'or APPLE_APP_STORE_SKU for the customer-facing App Store ID (the sku attribute).',
+    );
+  }
 
   return {
     keyId,
     issuerId,
     privateKey,
     ...(bundleId ? { bundleId } : {}),
-    ...(appStoreId ? { appStoreId } : {}),
+    ...(appId ? { appId } : {}),
+    ...(appStoreSku ? { appStoreSku } : {}),
   };
 }
 

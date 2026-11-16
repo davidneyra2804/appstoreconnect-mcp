@@ -10,17 +10,20 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../src/server.js';
 import {
   FakeAppStoreApi,
+  SCOPE,
   appFixture,
   betaGroupFixture,
   buildFixture,
   makeTestKeyPair,
+  outOfScopeAppFixture,
   reviewFixture,
+  scopedAppFixture,
   versionFixture,
 } from './fixtures.js';
 
 async function connect(
   api: FakeAppStoreApi,
-  config: { bundleId?: string; appStoreId?: string } = {},
+  config: { bundleId?: string; appId?: string; appStoreSku?: string } = {},
 ): Promise<{ client: Client; server: { close: () => Promise<void> } }> {
   const { privateKey } = makeTestKeyPair();
   const silentLogger = {
@@ -199,16 +202,17 @@ describe('read tool contracts', () => {
 describe('scope enforcement', () => {
   it('allows an app inside the configured bundle scope', async () => {
     const api = new FakeAppStoreApi();
-    api.on('/v1/apps/1234567890', { data: appFixture() });
-    api.onDocument('/v1/apps/1234567890/builds', [buildFixture()]);
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+    api.onDocument(`/v1/apps/${SCOPE.appId}/builds`, [buildFixture()]);
 
-    const { client, server } = await connect(api, { bundleId: 'com.example.fixture' });
+    const { client, server } = await connect(api, { bundleId: SCOPE.bundleId });
     const result = await client.callTool({
       name: 'list_builds',
-      arguments: { appId: '1234567890' },
+      arguments: { appId: SCOPE.appId },
     });
 
     assert.notEqual(result.isError, true);
+    assert.match(textOf(result), /1\.2\.3/);
 
     await client.close();
     await server.close();
@@ -216,22 +220,12 @@ describe('scope enforcement', () => {
 
   it('denies an app outside the configured bundle scope', async () => {
     const api = new FakeAppStoreApi();
-    api.on('/v1/apps/1234567890', {
-      data: appFixture({
-        attributes: {
-          name: 'Other App',
-          bundleId: 'com.example.other',
-          sku: '999',
-          appStoreState: 'READY_FOR_SALE',
-          primaryLocale: 'en-US',
-        },
-      }),
-    });
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: outOfScopeAppFixture() });
 
-    const { client, server } = await connect(api, { bundleId: 'com.example.fixture' });
+    const { client, server } = await connect(api, { bundleId: SCOPE.bundleId });
     const result = await client.callTool({
       name: 'list_builds',
-      arguments: { appId: '1234567890' },
+      arguments: { appId: SCOPE.appId },
     });
 
     assert.equal(result.isError, true);
@@ -241,14 +235,130 @@ describe('scope enforcement', () => {
     await server.close();
   });
 
-  it('denies an app outside the configured app store id scope', async () => {
+  it('allows the app when APPLE_APP_ID matches the App Store Connect app id', async () => {
     const api = new FakeAppStoreApi();
-    api.on('/v1/apps/1234567890', { data: appFixture() });
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+    api.onDocument(`/v1/apps/${SCOPE.appId}/builds`, [buildFixture()]);
 
-    const { client, server } = await connect(api, { appStoreId: '999999999' });
+    const { client, server } = await connect(api, { appId: SCOPE.appId });
+    const result = await client.callTool({
+      name: 'list_builds',
+      arguments: { appId: SCOPE.appId },
+    });
+
+    assert.notEqual(result.isError, true);
+    assert.match(textOf(result), /1\.2\.3/);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('allows the app when APPLE_APP_STORE_SKU matches the customer-facing App Store ID', async () => {
+    const api = new FakeAppStoreApi();
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+    api.onDocument(`/v1/apps/${SCOPE.appId}/builds`, [buildFixture()]);
+
+    const { client, server } = await connect(api, { appStoreSku: SCOPE.appStoreSku });
+    const result = await client.callTool({
+      name: 'list_builds',
+      arguments: { appId: SCOPE.appId },
+    });
+
+    assert.notEqual(result.isError, true);
+    assert.match(textOf(result), /1\.2\.3/);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('does not treat the App Store ID as the App Store Connect app id', async () => {
+    // The App Store ID (sku) is not the app id. Configuring it as APPLE_APP_ID
+    // must not match an app whose id differs, because that would let a scope
+    // widen to an app the operator never named.
+    const api = new FakeAppStoreApi();
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+
+    const { client, server } = await connect(api, { appId: SCOPE.appStoreSku });
     const result = await client.callTool({
       name: 'get_app',
-      arguments: { appId: '1234567890' },
+      arguments: { appId: SCOPE.appId },
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(textOf(result), /Access denied/);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('denies an app whose App Store Connect id is outside the configured scope', async () => {
+    const api = new FakeAppStoreApi();
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+
+    const { client, server } = await connect(api, { appId: SCOPE.otherAppId });
+    const result = await client.callTool({
+      name: 'get_app',
+      arguments: { appId: SCOPE.appId },
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(textOf(result), /Access denied/);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('denies an app whose App Store ID is outside the configured scope', async () => {
+    const api = new FakeAppStoreApi();
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+
+    const { client, server } = await connect(api, { appStoreSku: SCOPE.otherAppStoreSku });
+    const result = await client.callTool({
+      name: 'get_app',
+      arguments: { appId: SCOPE.appId },
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(textOf(result), /Access denied/);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('denies before reading the protected resource', async () => {
+    const api = new FakeAppStoreApi();
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+    api.onDocument(`/v1/apps/${SCOPE.appId}/builds`, [buildFixture()]);
+
+    const { client, server } = await connect(api, { appId: SCOPE.otherAppId });
+    await client.callTool({
+      name: 'list_builds',
+      arguments: { appId: SCOPE.appId },
+    });
+
+    const buildsRequests = api.requests.filter((request) => request.url.includes('/builds'));
+    assert.equal(
+      buildsRequests.length,
+      0,
+      'The protected resource must not be read when the app is out of scope',
+    );
+
+    await client.close();
+    await server.close();
+  });
+
+  it('requires every configured scope to match', async () => {
+    // A second scope variable cannot widen the first one.
+    const api = new FakeAppStoreApi();
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+
+    const { client, server } = await connect(api, {
+      appId: SCOPE.appId,
+      appStoreSku: SCOPE.otherAppStoreSku,
+    });
+    const result = await client.callTool({
+      name: 'get_app',
+      arguments: { appId: SCOPE.appId },
     });
 
     assert.equal(result.isError, true);
@@ -260,14 +370,14 @@ describe('scope enforcement', () => {
 
   it('does not query the app list endpoint when the scope is set', async () => {
     const api = new FakeAppStoreApi();
-    api.on('/v1/apps/1234567890', { data: appFixture() });
-    api.onDocument('/v1/apps/1234567890/builds', [buildFixture()]);
+    api.on(`/v1/apps/${SCOPE.appId}`, { data: scopedAppFixture() });
+    api.onDocument(`/v1/apps/${SCOPE.appId}/builds`, [buildFixture()]);
 
-    const { client, server } = await connect(api, { bundleId: 'com.example.fixture' });
-    await client.callTool({ name: 'list_builds', arguments: { appId: '1234567890' } });
+    const { client, server } = await connect(api, { bundleId: SCOPE.bundleId });
+    await client.callTool({ name: 'list_builds', arguments: { appId: SCOPE.appId } });
 
     assert.equal(
-      api.requests.some((request) => request.url.includes('/v1/apps?') ),
+      api.requests.some((request) => request.url.includes('/v1/apps?')),
       false,
       'The scope check must not enumerate the whole account',
     );

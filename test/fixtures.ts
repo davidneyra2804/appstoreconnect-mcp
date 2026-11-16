@@ -165,6 +165,64 @@ export function buildFixture(overrides: Record<string, unknown> = {}): Record<st
   };
 }
 
+/**
+ * Deterministic identifiers for the scope fixtures.
+ *
+ * The App Store Connect app id and the customer-facing App Store ID (sku) are
+ * deliberately different values, so a test that compares the wrong one against
+ * the wrong scope fails instead of passing by accident.
+ */
+export const SCOPE = {
+  /** App Store Connect app id: the opaque `id` of the apps resource. */
+  appId: '1234567890',
+  /** Customer-facing App Store ID: the `sku` attribute of the apps resource. */
+  appStoreSku: '987654321',
+  /** Bundle id of the fixture app. */
+  bundleId: 'com.example.fixture',
+  /** A second app, outside every scope. */
+  otherAppId: '5555555555',
+  otherAppStoreSku: '111222333',
+  otherBundleId: 'com.example.other',
+} as const;
+
+/**
+ * An app fixture whose identifiers match `SCOPE` exactly.
+ *
+ * Use it to prove that a correctly configured scope permits the app.
+ */
+export function scopedAppFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return appFixture({
+    id: SCOPE.appId,
+    attributes: {
+      name: 'Fixture App',
+      bundleId: SCOPE.bundleId,
+      sku: SCOPE.appStoreSku,
+      appStoreState: 'READY_FOR_SALE',
+      primaryLocale: 'en-US',
+    },
+    ...overrides,
+  });
+}
+
+/**
+ * An app fixture whose identifiers match none of the scopes.
+ */
+export function outOfScopeAppFixture(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return appFixture({
+    id: SCOPE.otherAppId,
+    attributes: {
+      name: 'Other App',
+      bundleId: SCOPE.otherBundleId,
+      sku: SCOPE.otherAppStoreSku,
+      appStoreState: 'READY_FOR_SALE',
+      primaryLocale: 'en-US',
+    },
+    ...overrides,
+  });
+}
+
 /** A beta group fixture. */
 export function betaGroupFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
