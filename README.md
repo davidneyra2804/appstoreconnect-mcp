@@ -9,7 +9,7 @@ Transporte local por **stdio**: se conecta con **Claude Desktop**, **Cursor**, *
 otro cliente MCP, y contra la API solo emite peticiones `GET`.
 
 📦 **npm**: [`@davidneyra2804/appstoreconnect-mcp`](https://www.npmjs.com/package/@davidneyra2804/appstoreconnect-mcp)
-🍎 **Datos**: apps, versiones de App Store, builds de TestFlight, grupos de beta, reseñas e informes de ventas
+🍎 **Datos**: apps, versiones de App Store, builds de TestFlight, grupos de beta, reseñas, informes de ventas, ficha de la app, precios, disponibilidad, compras in-app y analítica
 🔑 **Credenciales**: clave de API de App Store Connect (`.p8`)
 📄 **Licencia**: MIT — [LICENSE](LICENSE) y [NOTICE](NOTICE)
 
@@ -52,7 +52,7 @@ PEM en crudo o en base64.
 
 ## 🛠️ Herramientas
 
-Siete, todas de lectura:
+Doce, todas de lectura:
 
 | Herramienta | Argumentos | Devuelve |
 | --- | --- | --- |
@@ -63,6 +63,11 @@ Siete, todas de lectura:
 | `list_beta_groups` | `appId` | Grupos de beta de TestFlight |
 | `list_customer_reviews` | `appId`, `limit` (1–200, por defecto 50) | Reseñas de clientes |
 | `get_sales_report` | `appId`, `date` (`YYYY-MM-DD`, por defecto ayer) | Unidades e ingresos por moneda |
+| `get_app_info_details` | `appId` | Ficha de la app: estado, clasificación por edad, categorías y nombre, subtítulo y política de privacidad por idioma |
+| `get_app_pricing` | `appId` | Precios por territorio: precio al cliente, ingresos del desarrollador y moneda |
+| `get_app_availability` | `appId` | Disponibilidad por territorio: disponible o no, fecha de salida, preventa y estados de contenido |
+| `get_in_app_purchases` | `appId` | Compras in-app: nombre, product id, tipo y estado |
+| `get_analytics` | `appId` | Solicitudes de informe de analítica de la app y los informes que produjeron |
 
 ---
 
@@ -72,6 +77,9 @@ Siete, todas de lectura:
 - "¿Qué se repiten en las reseñas de 1 estrella de la última semana?"
 - "Dame el informe de ventas de ayer, desglosado por moneda."
 - "¿Qué versiones de App Store tiene mi app publicadas y en qué estado están?"
+- "¿En qué países está disponible mi app y a qué precio se vende en cada uno?"
+- "¿Qué compras in-app tiene mi app ahora mismo y en qué estado están?"
+- "¿Qué dicen las clasificaciones por edad de mi app en cada país?"
 
 ---
 
@@ -125,8 +133,9 @@ npm test
 
 ## 📄 Detalle
 
-[NOTES.md](NOTES.md) recoge lo que no cabe aquí: arquitectura, contrato del informe de ventas,
-publicación en npm, problemas habituales y la comparación con
+[NOTES.md](NOTES.md) recoge lo que no cabe aquí: arquitectura, contrato del informe de ventas, el
+endpoint y las limitaciones de cada herramienta, publicación en npm, problemas habituales y la
+comparación con
 [`ryaker/appstore-connect-mcp`](https://github.com/ryaker/appstore-connect-mcp), el proyecto que
 inspiró el diseño.
 

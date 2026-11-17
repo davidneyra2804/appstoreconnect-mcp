@@ -66,5 +66,16 @@ none of it is reproduced in this repository:
   * upstream issue #3 "Error when running using npx" — the packaging problem
     that the stdio entrypoint addresses.
 
+Later phases of this repository added five more read-only tools (app info,
+pricing, availability, in-app purchases and analytics). Upstream was reviewed
+again as prior art for that work, with the same outcome: its handlers were
+read for orientation, and the endpoints and the response shapes used here were
+verified against Apple's public App Store Connect API documentation rather
+than taken from the upstream source. In particular, upstream exposes no
+pricing, availability or in-app purchase tool at all, and its analytics
+handler creates a report request with a POST, which is a write that this
+read-only server does not implement; the same information is read here with
+GET /v1/apps/{id}/analyticsReportRequests. No upstream source file was copied.
+
 The upstream source files were not copied. The App Store Connect API paths and
 the JSON:API response shapes used here are Apple's public interface.
