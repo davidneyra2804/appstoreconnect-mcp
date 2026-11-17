@@ -176,7 +176,12 @@ describe('stdio transport', () => {
 
     const names = (toolsResponse.result?.tools ?? []).map((tool) => tool.name).sort();
     assert.deepEqual(names, [
+      'get_analytics',
       'get_app',
+      'get_app_availability',
+      'get_app_info_details',
+      'get_app_pricing',
+      'get_in_app_purchases',
       'get_sales_report',
       'list_app_store_versions',
       'list_apps',

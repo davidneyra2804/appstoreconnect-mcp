@@ -13,12 +13,17 @@ por stdio.
 | Incluido | Fuera de alcance (fases posteriores) |
 | --- | --- |
 | Transporte stdio local | Transporte HTTP / OAuth |
-| `list_apps`, `get_app` | Métricas de analytics |
+| `list_apps`, `get_app` | Datos numéricos de un informe de analítica |
 | `list_app_store_versions` | Operaciones de escritura |
 | `list_builds` (TestFlight) | |
 | `list_beta_groups` (TestFlight) | |
 | `list_customer_reviews` | |
 | `get_sales_report` (informe diario) | |
+| `get_app_info_details` (ficha de la app) | |
+| `get_app_pricing` (precios por territorio) | |
+| `get_app_availability` (disponibilidad) | |
+| `get_in_app_purchases` (compras in-app) | |
+| `get_analytics` (solicitudes de informe de analítica) | |
 
 El servidor solo emite peticiones `GET`. El cliente no contiene ningún método que haga `POST`,
 `PATCH`, `PUT` o `DELETE`.
@@ -49,6 +54,15 @@ prefijo de verbo (`create`, `update`, `delete`, `submit`, …) hace fallar el te
 
 Un argumento desconocido, ausente o fuera de rango se rechaza antes de emitir cualquier petición de
 red.
+
+El inventario actual es de **12 herramientas de lectura**: las 7 primeras (`list_apps`, `get_app`,
+`list_app_store_versions`, `list_builds`, `list_beta_groups`, `list_customer_reviews`,
+`get_sales_report`) y las 5 de ficha, precios, disponibilidad, compras in-app y analítica que se
+detallan en la sección 6.
+
+`APP_SCOPED_TOOLS` es la lista de las tools de alcance por app. Todas las que toman `appId` están en
+esa lista, y la suite comprueba que ninguna tool de alcance se quede sin declarar `appId` ni sin
+exigirlo: una tool de alcance sin `appId` obligatorio dejaría pasar apps ajenas.
 
 ---
 
@@ -91,7 +105,148 @@ deterministas, con fixtures sintéticos del layout de columnas de Apple.
 
 ---
 
-## 6. Transporte stdio
+## 6. Ficha, precios, disponibilidad, compras in-app y analítica
+
+Las cinco herramientas siguientes amplían el inventario de solo lectura. Todas son de alcance por app:
+toman `appId` y se comprueban contra el alcance configurado antes de emitir cualquier petición.
+
+Los endpoints se verificaron contra la documentación de Apple
+(`developer.apple.com/documentation/appstoreconnectapi`), no contra el código de upstream: upstream no
+expone precios, disponibilidad ni compras in-app, y su equivalente de analítica es de escritura.
+
+### `get_app_info_details`
+
+| | |
+| --- | --- |
+| Endpoint | `GET /v1/apps/{id}/appInfos` |
+| Parámetros | `include=appInfoLocalizations`, `limit` |
+| Scopes | ninguno adicional: los mismos de la clave de API |
+
+Una app tiene **una ficha por versión de App Store**: la que está viva y la que entrará en vigor con la
+próxima versión. Por eso el resultado es una lista y no un objeto.
+
+Devuelve el estado (`appStoreState`, `state`), la clasificación por edad (`appStoreAgeRating`) y las
+clasificaciones por territorio (Australia, Brasil, Francia, Corea), las categorías y subcategorías
+primarias y secundarias, y las localizaciones (idioma, nombre, subtítulo, URL y texto de la política de
+privacidad).
+
+**Limitaciones:**
+
+- La categoría se devuelve con su **id** cuando Apple no la incluye en la respuesta. La tool pide las
+  categorías en línea, así que normalmente llega el nombre; si no, el id sigue identificando la categoría.
+- `privacyPolicyText` puede venir vacío: Apple lo omite cuando la política es solo una URL.
+- El endpoint `appInfoLocalizations` existe por separado (`GET /v1/apps/{id}/appInfoLocalizations`).
+  Aquí se usa la variante `include`, que devuelve los idiomas en la misma llamada.
+
+### `get_app_pricing`
+
+| | |
+| --- | --- |
+| Endpoint | `GET /v1/apps/{id}/appPricePoints` |
+| Parámetros | `include=territory`, `limit`, `filter[territory]` |
+| Scopes | ninguno adicional |
+
+Un **price point** es el precio de la app en **un** territorio, así que la lista tiene una entrada por
+territorio. Cada entrada trae el precio al cliente (`customerPrice`), los ingresos del desarrollador
+(`proceeds`) y la moneda del territorio.
+
+**Limitaciones:**
+
+- El precio es una **cadena**, no un número: Apple la formatea con su propia configuración regional.
+  No se reinterpreta ni se convierte a número.
+- Los importes que se devuelven son los **brutos**: no se les aplica ningún tipo de cambio ni se suman
+  entre monedas. Cada territorio es una fila independiente.
+- Una app que nunca se ha puesto a la venta puede no tener ningún price point.
+- El endpoint está en la **v3** del modelo de precio (`appPricePoints` / `AppPricePointV3`). No se usa
+  `GET /v1/appStoreVersions/{id}/appPrice`: ese endpoint no existe, el precio se asocia a la app y no a
+  la versión.
+- La API ofrece `filter[territory]` y `GET /v1/apps/{id}/appPriceSchedule`; esta tool no los expone
+  todavía, la superficie se amplía en una fase posterior si hace falta.
+
+### `get_app_availability`
+
+| | |
+| --- | --- |
+| Endpoint | `GET /v1/apps/{id}/appAvailabilityV2` |
+| Parámetros | `include=territoryAvailabilities`, `limit[territoryAvailabilities]` |
+| Scopes | ninguno adicional |
+
+Devuelve el registro de disponibilidad de la app y, en línea, una entrada por territorio con si la app
+está disponible allí, la fecha de salida, si hay preventa (`preOrderEnabled`,
+`preOrderPublishDate`) y los estados de contenido (`contentStatuses`).
+
+**Limitaciones:**
+
+- El endpoint es la **v2** (`appAvailabilityV2` / `AppAvailabilityV2`). La v1 (`GET /v1/apps/{id}/appAvailability`)
+  es el modelo antiguo y queda obsoleto.
+- El **territorio se identifica por su código** (`USA`, `ESP`, `JPN`, …). La API no expone el nombre del
+  país junto al código; el nombre se puede cruzar con `GET /v1/territories`, que esta tool no llama.
+- La app puede tener **más de un** registro de disponibilidad (por ejemplo, cuando hay preventa en
+  curso). El resultado es una lista por esa razón.
+
+### `get_in_app_purchases`
+
+| | |
+| --- | --- |
+| Endpoint | `GET /v1/apps/{id}/inAppPurchasesV2` |
+| Parámetros | `limit` |
+| Scopes | ninguno adicional |
+
+Cubre consumibles, no consumibles, suscripciones no renovables y **suscripciones auto-renovables**: la
+tool usa el endpoint **v2**, que lo tiene todo. Devuelve nombre, `productId`, tipo
+(`inAppPurchaseType`) y estado (`state`).
+
+**Limitaciones:**
+
+- El endpoint heredado `GET /v1/apps/{id}/inAppPurchases` **no** cubre las suscripciones
+  auto-renovables: por eso no se usa.
+- `productId` es el identificador que usa la app en el código (el que va en `SKPayment`), no un id de
+  App Store Connect.
+- El estado refleja el del **producto**, no el de la versión concreta de la suscripción.
+- Apple permite filtrar por tipo, nombre, `productId` y estado; esta tool no expone esos filtros todavía.
+
+### `get_analytics`
+
+| | |
+| --- | --- |
+| Endpoint | `GET /v1/apps/{id}/analyticsReportRequests` |
+| Parámetros | `include=reports`, `limit`, `limit[reports]`, `filter[accessType]` |
+| Scopes | ninguno adicional |
+
+Devuelve las **solicitudes de informe de analítica** que la cuenta ya tiene para la app, con su tipo de
+acceso (`accessType`: `ONE_TIME_SNAPSHOT` u `ONGOING`), si se han detenido por inactividad
+(`stoppedDueToInactivity`) y los informes que produjo cada una (nombre y categoría: `APP_USAGE`,
+`APP_STORE_ENGAGEMENT`, `COMMERCE`, `FRAMEWORK_USAGE`, `PERFORMANCE`).
+
+**Limitaciones — esta es la herramienta con más recorrido:**
+
+- **Crear una solicitud de informe es una escritura** (`POST /v1/analyticsReportRequests`), así que
+  esta tool **no** la hace. Solo lee las solicitudes que ya existen. Para pedir un informe nuevo hay que
+  ir a App Store Connect o usar una tool de escritura, que este servidor no tiene.
+- Los datos del informe (instancias, segmentos, el CSV) están **más allá** de esta tool. La API los
+  expone por otra cadena de endpoints:
+  `GET /v1/analyticsReportRequests/{id}/reports` → `GET /v1/analyticsReports/{id}/instances` →
+  `GET /v1/analyticsReportInstances/{id}/segments` → `GET /v1/analyticsReportSegments/{id}`. Es una
+  cadena de cuatro llamadas y el CSV del segmento se descarga por una URL con token, así que queda
+  fuera de la superficie de lectura de esta fase.
+- El contenido de un informe no está en la respuesta de la solicitud: la tool devuelve el **catálogo**
+  de informes de la app, no sus números.
+
+### Errores frecuentes de las cinco
+
+| Síntoma | Causa | Solución |
+| --- | --- | --- |
+| `403` al pedir precios, disponibilidad o compras in-app | La clave de API no tiene permiso sobre esos recursos | Comprobar los roles de la clave en App Store Connect → Integraciones. Un rol de solo lectura sin acceso a App Store Connect devuelve `403` |
+| `404` en `appInfos` | La app nunca ha estado en la App Store | Una app sin versión publicada no tiene ficha |
+| `404` en `appPricePoints` | La app nunca ha sido puesta a la venta, o no tiene precio en ese territorio | Un price point por territorio: un territorio sin precio no devuelve entrada |
+| Lista de disponibilidad vacía | La app no tiene registro de disponibilidad | Comprobar que la app está publicada en algún territorio |
+| `get_analytics` no devuelve nada | La cuenta no ha creado ninguna solicitud de informe para esa app | Esta tool no crea solicitudes: hay que crearlas en App Store Connect |
+| `appAvailabilityV2` devuelve varios registros | La app tiene más de una versión de disponibilidad (preventa y venta) | Se muestran todos |
+
+
+---
+
+## 7. Transporte stdio
 
 `stdout` transporta exclusivamente tramas JSON-RPC del protocolo MCP. Todos los diagnósticos, avisos
 y trazas van a `stderr`.
@@ -104,7 +259,7 @@ termina con código distinto de cero.
 
 ---
 
-## 7. Seguridad de los logs
+## 8. Seguridad de los logs
 
 - Todos los diagnósticos van a `stderr`; `stdout` nunca lleva texto que no sea JSON-RPC.
 - Los valores secretos se redactan antes de escribir: claves con nombre de secreto (`privateKey`, `authorization`, `token`, …) se sustituyen por una huella no reversible.
@@ -113,7 +268,7 @@ termina con código distinto de cero.
 
 ---
 
-## 8. Comparación con `ryaker/appstore-connect-mcp`
+## 9. Comparación con `ryaker/appstore-connect-mcp`
 
 Este repositorio **no** es una copia ni un superconjunto de
 [ryaker/appstore-connect-mcp](https://github.com/ryaker/appstore-connect-mcp) (MIT), que sigue siendo
@@ -121,7 +276,7 @@ la referencia del dominio.
 
 | | upstream | este repositorio |
 | --- | --- | --- |
-| Herramientas | 15, incluidas de escritura | 7, todas de lectura |
+| Herramientas | 15, incluidas de escritura | 12, todas de lectura |
 | Transporte | HTTP, stdio y SSE, con OAuth2/Auth0 | stdio local |
 | Empaquetado | npm, Docker, Vercel, Smithery, MCP Registry | npm |
 | Autenticación | clave de API o OAuth2/Auth0 | clave de API (`.p8`) |
@@ -133,13 +288,14 @@ Lo que este repositorio hace mejor:
 - **El alcance por app se comprueba antes de cualquier petición**, no después.
 - **`stdout` queda reservado al protocolo**; diagnósticos y trazas van a `stderr`, y los secretos se redactan antes de escribirse.
 - **El informe de ventas se lee como el informe que es**: TSV comprimido por gzip, subtipo `SUMMARY`, ingresos por moneda y sin sumar nunca importes de monedas distintas. Upstream mantiene su equivalente roto en `main`; su PR #5 lo corrige (verificado el 2026-11-17: sigue abierto).
+- **Las cinco tools de ficha, precios, disponibilidad, compras in-app y analítica no existen en upstream.** Upstream no expone precios, disponibilidad ni compras in-app, y su tool de analítica (`createAnalyticsReportRequest`) es de **escritura**: hace un `POST` a `/analyticsReportRequests`. Aquí la misma información se lee con `GET /v1/apps/{id}/analyticsReportRequests`, y el resto de endpoints se verificaron contra la documentación de Apple, no contra el código de upstream.
 
 Pendiente de adoptar de upstream: el transporte HTTP con el servidor atado a `127.0.0.1` por defecto
-(PR #6, también abierto). El requisito queda escrito en la sección 12.
+(PR #6, también abierto). El requisito queda escrito en la sección 13.
 
 ---
 
-## 9. Publicación en npm
+## 10. Publicación en npm
 
 El paquete se publica en el registro público de npm como
 `@davidneyra2804/appstoreconnect-mcp`.
@@ -230,7 +386,7 @@ el acto explícito y deliberado que autoriza la publicación, y el circuito es m
 
 ---
 
-## 10. Problemas habituales
+## 11. Problemas habituales
 
 ### Instalación
 
@@ -268,7 +424,7 @@ el *trusted publishing* solo se configura en la página de un paquete ya existen
 
 ---
 
-## 11. Desarrollo, pruebas y CI
+## 12. Desarrollo, pruebas y CI
 
 ```bash
 npm run build                 # compilar a dist/
@@ -285,7 +441,7 @@ también comprueba que el repositorio no menciona a ninguna organización.
 
 ---
 
-## 12. Transporte HTTP (fase posterior)
+## 13. Transporte HTTP (fase posterior)
 
 El transporte HTTP **no está implementado**. Cuando se aborde, quedan fijados estos requisitos:
 

@@ -380,6 +380,170 @@ async function dispatch(
       return lines.join('\n');
     }
 
+    case 'get_app_info_details': {
+      const appId = String(args.appId);
+      const infos = await client.getAppInfos(appId);
+      if (infos.length === 0) return `No App Store info found for app ${appId}.`;
+
+      const blocks = infos.map((info) => {
+        const lines = [
+          `Info id: ${info.id}`,
+          `App Store state: ${info.appStoreState ?? 'N/A'}`,
+          `State: ${info.state ?? 'N/A'}`,
+          `Age rating: ${info.appStoreAgeRating ?? 'N/A'}`,
+          `Category: ${info.primaryCategory ?? 'N/A'}`,
+        ];
+
+        const subcategory = info.primarySubcategoryOne;
+        if (subcategory) lines.push(`Subcategory: ${subcategory}`);
+
+        const secondary = info.secondaryCategory;
+        if (secondary) lines.push(`Secondary category: ${secondary}`);
+
+        const ratings = [
+          ['Australia', info.australiaAgeRating],
+          ['Brazil', info.brazilAgeRating],
+          ['France', info.franceAgeRating],
+          ['Korea', info.koreaAgeRating],
+        ].filter(([, value]) => value !== null);
+
+        if (ratings.length > 0) {
+          lines.push(
+            `Territory ratings: ${ratings
+              .map(([country, value]) => `${country} ${value}`)
+              .join(', ')}`,
+          );
+        }
+
+        if (info.localizations.length === 0) {
+          lines.push('Localizations: none');
+        } else {
+          lines.push(`Localizations (${info.localizations.length}):`);
+          for (const localization of info.localizations) {
+            lines.push(
+              `  • ${localization.locale ?? 'N/A'}: ${localization.name ?? 'N/A'}` +
+                (localization.subtitle ? ` — ${localization.subtitle}` : ''),
+            );
+          }
+        }
+
+        return lines.join('\n');
+      });
+
+      return `${infos.length} App Store info(s) for app ${appId}:\n\n${blocks.join('\n\n')}`;
+    }
+
+    case 'get_app_pricing': {
+      const appId = String(args.appId);
+      const pricePoints = await client.getAppPricePoints(appId);
+      if (pricePoints.length === 0) {
+        return `No price points found for app ${appId}. ` +
+          'An app that has never been priced has no price point.';
+      }
+
+      const lines = pricePoints.map(
+        (point) =>
+          `• ${point.territory ?? 'N/A'}${point.territoryCurrency ? ` (${point.territoryCurrency})` : ''}\n` +
+          `  Customer price: ${point.customerPrice ?? 'N/A'}\n` +
+          `  Developer proceeds: ${point.proceeds ?? 'N/A'}`,
+      );
+
+      return `${pricePoints.length} price point(s) for app ${appId}:\n\n${lines.join('\n\n')}`;
+    }
+
+    case 'get_app_availability': {
+      const appId = String(args.appId);
+      const availabilities = await client.getAppAvailability(appId);
+      if (availabilities.length === 0) {
+        return `No availability found for app ${appId}.`;
+      }
+
+      const blocks = availabilities.map((availability) => {
+        const lines = [
+          `Availability id: ${availability.id}`,
+          `Available in new territories: ${availability.availableInNewTerritories ? 'yes' : 'no'}`,
+        ];
+
+        if (availability.territories.length === 0) {
+          lines.push('Territories: none');
+        } else {
+          const available = availability.territories.filter((territory) => territory.available);
+          lines.push(
+            `Territories: ${availability.territories.length} listed, ${available.length} available`,
+          );
+
+          for (const territory of availability.territories) {
+            const details = [
+              territory.available ? 'available' : 'not available',
+              territory.releaseDate ? `released ${territory.releaseDate}` : null,
+              territory.preOrderEnabled ? 'pre-order' : null,
+              territory.contentStatuses.length > 0
+                ? territory.contentStatuses.join(', ')
+                : null,
+            ].filter((value): value is string => value !== null);
+
+            lines.push(`  • ${territory.territory ?? 'N/A'}: ${details.join(', ')}`);
+          }
+        }
+
+        return lines.join('\n');
+      });
+
+      return `Availability for app ${appId}:\n\n${blocks.join('\n\n')}`;
+    }
+
+    case 'get_in_app_purchases': {
+      const appId = String(args.appId);
+      const purchases = await client.getInAppPurchases(appId);
+      if (purchases.length === 0) {
+        return `No in-app purchases found for app ${appId}.`;
+      }
+
+      const lines = purchases.map(
+        (purchase) =>
+          `• ${purchase.name ?? 'N/A'}\n` +
+          `  Id: ${purchase.id}\n` +
+          `  Product id: ${purchase.productId ?? 'N/A'}\n` +
+          `  Type: ${purchase.inAppPurchaseType ?? 'N/A'}\n` +
+          `  State: ${purchase.state ?? 'N/A'}` +
+          (purchase.familySharable ? '\n  Family sharable: yes' : ''),
+      );
+
+      return `${purchases.length} in-app purchase(s) for app ${appId}:\n\n${lines.join('\n\n')}`;
+    }
+
+    case 'get_analytics': {
+      const appId = String(args.appId);
+      const requests = await client.getAnalyticsReportRequests(appId);
+      if (requests.length === 0) {
+        return (
+          `No analytics report requests found for app ${appId}. ` +
+          'Report requests are created in App Store Connect; this server only reads them.'
+        );
+      }
+
+      const blocks = requests.map((request) => {
+        const lines = [
+          `Request id: ${request.id}`,
+          `Access type: ${request.accessType ?? 'N/A'}`,
+          `Stopped due to inactivity: ${request.stoppedDueToInactivity ? 'yes' : 'no'}`,
+        ];
+
+        if (request.reports.length === 0) {
+          lines.push('Reports: none');
+        } else {
+          lines.push(`Reports (${request.reports.length}):`);
+          for (const report of request.reports) {
+            lines.push(`  • ${report.name ?? 'N/A'} [${report.category ?? 'N/A'}]`);
+          }
+        }
+
+        return lines.join('\n');
+      });
+
+      return `${requests.length} analytics report request(s) for app ${appId}:\n\n${blocks.join('\n\n')}`;
+    }
+
     default:
       throw new ToolInputError(`Unknown tool: ${name}`);
   }

@@ -51,6 +51,27 @@ export class FakeAppStoreApi {
     return this;
   }
 
+  /**
+   * Register a JSON:API document with related resources.
+   *
+   * The related resources travel in the `included` array of the same
+   * response, which is how Apple returns a territory, a localization or a
+   * report next to the resource that points at it.
+   */
+  onDocumentWithIncluded(
+    pathPrefix: string,
+    data: unknown[],
+    included: unknown[],
+    options: { next?: string } = {},
+  ): this {
+    this.routes.set(pathPrefix, () => ({
+      data,
+      included,
+      links: options.next ? { next: options.next } : {},
+    }));
+    return this;
+  }
+
   /** Register an error response for a path prefix. */
   onError(pathPrefix: string, status: number, body: unknown): this {
     this.routes.set(pathPrefix, () => ({ __status: status, __body: body }));
@@ -272,6 +293,185 @@ export function reviewFixture(overrides: Record<string, unknown> = {}): Record<s
       territory: 'USA',
       createdDate: '2026-03-01T12:00:00Z',
       body: 'Works well.',
+    },
+    ...overrides,
+  };
+}
+
+/** An app info fixture: the app-level information Apple derives. */
+export function appInfoFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'appInfos',
+    id: 'ai1',
+    attributes: {
+      appStoreState: 'READY_FOR_SALE',
+      state: 'READY_FOR_SALE',
+      appStoreAgeRating: '4+',
+      australiaAgeRating: null,
+      brazilAgeRating: null,
+      brazilAgeRatingV2: null,
+      franceAgeRating: null,
+      koreaAgeRating: null,
+    },
+    relationships: {
+      primaryCategory: { data: { id: 'cat1', type: 'appCategories' } },
+      appInfoLocalizations: { data: [{ id: 'loc1', type: 'appInfoLocalizations' }] },
+    },
+    ...overrides,
+  };
+}
+
+/** An app info localization fixture. */
+export function appInfoLocalizationFixture(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    type: 'appInfoLocalizations',
+    id: 'loc1',
+    attributes: {
+      locale: 'en-US',
+      name: 'Fixture App',
+      subtitle: 'Does things',
+      privacyPolicyUrl: 'https://example.com/privacy',
+      privacyPolicyText: null,
+      privacyChoicesUrl: null,
+    },
+    relationships: {
+      appInfo: { data: { id: 'ai1', type: 'appInfos' } },
+    },
+    ...overrides,
+  };
+}
+
+/** An app category fixture. */
+export function appCategoryFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'appCategories',
+    id: 'cat1',
+    attributes: {
+      platforms: ['IOS'],
+      subcategories: ['GAMES'],
+    },
+    ...overrides,
+  };
+}
+
+/** An app price point fixture. */
+export function appPricePointFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'appPricePoints',
+    id: 'pp1',
+    attributes: {
+      customerPrice: '0.99',
+      proceeds: '0.69',
+    },
+    relationships: {
+      territory: { data: { id: 'USA', type: 'territories' } },
+    },
+    ...overrides,
+  };
+}
+
+/** A territory fixture. */
+export function territoryFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'territories',
+    id: 'USA',
+    attributes: {
+      currency: 'USD',
+    },
+    ...overrides,
+  };
+}
+
+/** An app availability fixture. */
+export function appAvailabilityFixture(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    type: 'appAvailabilities',
+    id: 'av1',
+    attributes: {
+      availableInNewTerritories: false,
+    },
+    relationships: {
+      territoryAvailabilities: {
+        data: [{ id: 'ta1', type: 'territoryAvailabilities' }],
+      },
+    },
+    ...overrides,
+  };
+}
+
+/** A territory availability fixture. */
+export function territoryAvailabilityFixture(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    type: 'territoryAvailabilities',
+    id: 'ta1',
+    attributes: {
+      available: true,
+      releaseDate: '2026-01-10',
+      preOrderEnabled: false,
+      preOrderPublishDate: null,
+      contentStatuses: ['AVAILABLE_FOR_SALE'],
+    },
+    relationships: {
+      territory: { data: { id: 'USA', type: 'territories' } },
+      appAvailabilityV2: { data: { id: 'av1', type: 'appAvailabilities' } },
+    },
+    ...overrides,
+  };
+}
+
+/** An in-app purchase fixture. */
+export function inAppPurchaseFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'inAppPurchasesV2',
+    id: 'iap1',
+    attributes: {
+      name: 'Coins 100',
+      productId: 'com.example.fixture.coins100',
+      inAppPurchaseType: 'CONSUMABLE',
+      state: 'READY_TO_SUBMIT',
+      reviewNote: null,
+      familySharable: false,
+      contentHosting: false,
+    },
+    ...overrides,
+  };
+}
+
+/** An analytics report fixture. */
+export function analyticsReportFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'analyticsReports',
+    id: 'rep1',
+    attributes: {
+      name: 'App Sessions',
+      category: 'APP_USAGE',
+    },
+    relationships: {
+      analyticsReportRequest: { data: { id: 'arr1', type: 'analyticsReportRequests' } },
+    },
+    ...overrides,
+  };
+}
+
+/** An analytics report request fixture. */
+export function analyticsReportRequestFixture(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    type: 'analyticsReportRequests',
+    id: 'arr1',
+    attributes: {
+      accessType: 'ONGOING',
+      stoppedDueToInactivity: false,
+    },
+    relationships: {
+      reports: { data: [{ id: 'rep1', type: 'analyticsReports' }] },
     },
     ...overrides,
   };
