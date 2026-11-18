@@ -1,28 +1,28 @@
 # 🍎 appstoreconnect-mcp
 
 [![npm](https://img.shields.io/npm/v/@davidneyra2804/appstoreconnect-mcp.svg)](https://www.npmjs.com/package/@davidneyra2804/appstoreconnect-mcp)
-[![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 
-Servidor MCP (Model Context Protocol) de **solo lectura** para la API de App Store Connect de Apple.
-Transporte local por **stdio**: se conecta con **Claude Desktop**, **Cursor**, **Windsurf** o cualquier
-otro cliente MCP, y contra la API solo emite peticiones `GET`.
+A **read-only** MCP (Model Context Protocol) server for Apple's App Store Connect API.
+The local **stdio** transport connects to **Claude Desktop**, **Cursor**, **Windsurf**, or any
+other MCP client. The server sends only `GET` requests to the API.
 
 📦 **npm**: [`@davidneyra2804/appstoreconnect-mcp`](https://www.npmjs.com/package/@davidneyra2804/appstoreconnect-mcp)
-🍎 **Datos**: apps, versiones de App Store, builds de TestFlight, grupos de beta, reseñas, informes de ventas, ficha de la app, precios, disponibilidad, compras in-app y analítica
-🔑 **Credenciales**: clave de API de App Store Connect (`.p8`)
-📄 **Licencia**: MIT — [LICENSE](LICENSE) y [NOTICE](NOTICE)
+🍎 **Data**: apps, App Store versions, TestFlight builds, beta groups, reviews, sales reports, app information, pricing, availability, in-app purchases, and analytics
+🔑 **Credentials**: App Store Connect API key (`.p8`)
+📄 **License**: MIT — [LICENSE](LICENSE) and [NOTICE](NOTICE)
 
 ---
 
-## 💡 Inicio rápido
+## 💡 Quick start
 
-### 1. Genera una clave de API
+### 1. Generate an API key
 
-1. Entra en [App Store Connect](https://appstoreconnect.apple.com/) → **Usuarios y acceso** → **Integraciones** → **App Store Connect API**.
-2. Crea una clave `.p8` y anota su **Key ID** y su **Issuer ID**.
+1. Go to [App Store Connect](https://appstoreconnect.apple.com/) → **Users and Access** → **Integrations** → **App Store Connect API**.
+2. Create a `.p8` key and record its **Key ID** and **Issuer ID**.
 
-### 2. Añádelo a tu cliente MCP
+### 2. Add the server to your MCP client
 
 ```json
 {
@@ -40,71 +40,71 @@ otro cliente MCP, y contra la API solo emite peticiones `GET`.
 }
 ```
 
-Dónde vive ese fichero: Claude Desktop `~/Library/Application Support/Claude/claude_desktop_config.json`,
+Configuration file locations: Claude Desktop `~/Library/Application Support/Claude/claude_desktop_config.json`,
 Cursor `~/.cursor/mcp.json`, Windsurf `~/.codeium/windsurf/mcp_config.json`, VS Code `.vscode/mcp.json`.
 
-> El servidor habla JSON-RPC por `stdin`/`stdout` y no muestra nada en la terminal. Es lo esperado.
+> The server exchanges JSON-RPC messages over `stdin` and `stdout`. An idle terminal is expected.
 
-Si prefieres la clave en una variable de entorno en vez de en un fichero, usa `APPLE_PRIVATE_KEY` con el
-PEM en crudo o en base64.
+To pass the key in an environment variable, set `APPLE_PRIVATE_KEY` to the raw PEM or its
+base64-encoded value.
 
 ---
 
-## 🛠️ Herramientas
+## 🛠️ Tools
 
-Doce, todas de lectura:
+All 12 tools are read-only.
 
-| Herramienta | Argumentos | Devuelve |
+| Tool | Arguments | Returns |
 | --- | --- | --- |
-| `list_apps` | — | Apps visibles en la cuenta: id, nombre, bundle id, SKU y estado |
-| `get_app` | `appId` | Una app |
-| `list_app_store_versions` | `appId` | Versiones de App Store, más recientes primero |
-| `list_builds` | `appId` | Builds de TestFlight, más recientes primero |
-| `list_beta_groups` | `appId` | Grupos de beta de TestFlight |
-| `list_customer_reviews` | `appId`, `limit` (1–200, por defecto 50) | Reseñas de clientes |
-| `get_sales_report` | `appId`, `date` (`YYYY-MM-DD`, por defecto ayer) | Unidades e ingresos por moneda |
-| `get_app_info_details` | `appId` | Ficha de la app: estado, clasificación por edad, categorías y nombre, subtítulo y política de privacidad por idioma |
-| `get_app_pricing` | `appId` | Precios por territorio: precio al cliente, ingresos del desarrollador y moneda |
-| `get_app_availability` | `appId` | Disponibilidad por territorio: disponible o no, fecha de salida, preventa y estados de contenido |
-| `get_in_app_purchases` | `appId` | Compras in-app: nombre, product id, tipo y estado |
-| `get_analytics` | `appId` | Solicitudes de informe de analítica de la app y los informes que produjeron |
+| `list_apps` | — | Apps visible to the account: ID, name, bundle ID, SKU, and status |
+| `get_app` | `appId` | One app |
+| `list_app_store_versions` | `appId` | App Store versions, newest first |
+| `list_builds` | `appId` | TestFlight builds, newest first |
+| `list_beta_groups` | `appId` | TestFlight beta groups |
+| `list_customer_reviews` | `appId`, `limit` (1–200, default 50) | Customer reviews |
+| `get_sales_report` | `appId`, `date` (`YYYY-MM-DD`, defaults to yesterday) | Units and proceeds by currency |
+| `get_app_info_details` | `appId` | App information: status, age rating, categories, and name, subtitle, and privacy policy by language |
+| `get_app_pricing` | `appId` | Pricing by territory: customer price, developer proceeds, and currency |
+| `get_app_availability` | `appId` | Availability by territory: whether the app is available, release date, pre-order details, and content statuses |
+| `get_in_app_purchases` | `appId` | In-app purchases: name, product ID, type, and status |
+| `get_analytics` | `appId` | App analytics report requests and the reports they produced |
 
 ---
 
-## 💬 Ejemplos de prompts
+## 💬 Example prompts
 
-- "Muéstrame los últimos builds de TestFlight de mi app y su estado de procesamiento."
-- "¿Qué se repiten en las reseñas de 1 estrella de la última semana?"
-- "Dame el informe de ventas de ayer, desglosado por moneda."
-- "¿Qué versiones de App Store tiene mi app publicadas y en qué estado están?"
-- "¿En qué países está disponible mi app y a qué precio se vende en cada uno?"
-- "¿Qué compras in-app tiene mi app ahora mismo y en qué estado están?"
-- "¿Qué dicen las clasificaciones por edad de mi app en cada país?"
+- "Show me my app's latest TestFlight builds and their processing status."
+- "What themes recur in last week's one-star reviews?"
+- "Give me yesterday's sales report, broken down by currency."
+- "Which App Store versions has my app published, and what status is each one in?"
+- "In which countries is my app available, and how much does it cost in each?"
+- "What in-app purchases does my app currently have, and what status is each one in?"
+- "What is my app's age rating in each country?"
 
 ---
 
-## 🔑 Variables de entorno
+## 🔑 Environment variables
 
-| Variable | Obligatoria | Descripción |
+| Variable | Required | Description |
 | --- | --- | --- |
-| `APPLE_KEY_ID` | Sí | Key ID de la clave `.p8` |
-| `APPLE_ISSUER_ID` | Sí | Issuer ID (team ID) de App Store Connect |
-| `APPLE_PRIVATE_KEY` | Sí\* | PEM de la clave, en crudo o en base64 |
-| `APPLE_PRIVATE_KEY_PATH` | Sí\* | Ruta al fichero `.p8`, en lugar de `APPLE_PRIVATE_KEY` |
-| `APPLE_APP_ID` | No | Limita el servidor a una app (id de App Store Connect) |
-| `APPLE_BUNDLE_ID` | No | Limita el servidor a una app (bundle id) |
-| `APPLE_APP_STORE_SKU` | No | Limita el servidor a una app (App Store ID) |
-| `APPLE_VENDOR_NUMBER` | No | Número de proveedor. Necesario para `get_sales_report` |
-| `LOG_LEVEL` | No | `debug`, `info` (por defecto), `warn` o `error` |
+| `APPLE_KEY_ID` | Yes | Key ID of the `.p8` key |
+| `APPLE_ISSUER_ID` | Yes | App Store Connect Issuer ID (team ID) |
+| `APPLE_PRIVATE_KEY` | Yes\* | Raw or base64-encoded PEM key |
+| `APPLE_PRIVATE_KEY_PATH` | Yes\* | Path to the `.p8` file, as an alternative to `APPLE_PRIVATE_KEY` |
+| `APPLE_APP_ID` | No | Restricts the server to one app (App Store Connect ID) |
+| `APPLE_BUNDLE_ID` | No | Restricts the server to one app (bundle ID) |
+| `APPLE_APP_STORE_SKU` | No | Restricts the server to one app (App Store ID) |
+| `APPLE_VENDOR_NUMBER` | No | Vendor number. Required for `get_sales_report` |
+| `LOG_LEVEL` | No | `debug`, `info` (default), `warn`, or `error` |
 
-\* Configura una de las dos, no ambas.
+\* Configure exactly one of these two variables.
 
-Si defines varias variables de alcance, **todas** tienen que apuntar a la misma app: el alcance no se
-amplía con una segunda variable. Detalle en [NOTES.md](NOTES.md).
+If you set multiple scope variables, **every variable** must identify the same app. The scope
+remains limited to that app. See [NOTES.md](NOTES.md) for details.
 
 ---
 
-## 💻 Desarrollo local
+## 💻 Local development
 
 ```bash
 git clone https://github.com/davidneyra2804/appstoreconnect-mcp.git
@@ -114,36 +114,35 @@ npm run build
 npm test
 ```
 
-| Comando | Qué hace |
+| Command | Purpose |
 | --- | --- |
-| `npm run build` | Compila a `dist/` |
-| `npm start` | Arranca el servidor por stdio |
-| `npm run dev` | Arranca en modo desarrollo (`tsx`) |
-| `npm test` | Suite completa, sin red y sin credenciales reales |
+| `npm run build` | Compiles to `dist/` |
+| `npm start` | Starts the server over stdio |
+| `npm run dev` | Starts the server in development mode (`tsx`) |
+| `npm test` | Runs the full suite offline without real credentials |
 
 ---
 
-## 🔒 Garantías
+## 🔒 Guarantees
 
-- **Solo lectura.** El inventario vive en `src/tools.ts` y la suite comprueba que el conjunto registrado coincide exactamente con esa lista y que ninguna herramienta de escritura está presente.
-- **Alcance comprobado antes de la petición.** Si limitas el servidor a una app, el alcance se verifica antes de llamar a la API.
-- **`stdout` es del protocolo.** Diagnósticos y trazas van a `stderr`, y los secretos se redactan antes de escribirse.
+- **Read-only.** The inventory lives in `src/tools.ts`. The test suite checks that the registered tools match it exactly and that the server exposes zero write tools.
+- **Scope checks precede API requests.** If you restrict the server to one app, it checks the scope before calling the API.
+- **The protocol owns `stdout`.** Diagnostics and traces go to `stderr`, and the server redacts secrets before writing logs.
 
 ---
 
-## 📄 Detalle
+## 📄 Further details
 
-[NOTES.md](NOTES.md) recoge lo que no cabe aquí: arquitectura, contrato del informe de ventas, el
-endpoint y las limitaciones de cada herramienta, publicación en npm, problemas habituales y la
-comparación con
-[`ryaker/appstore-connect-mcp`](https://github.com/ryaker/appstore-connect-mcp), el proyecto que
-inspiró el diseño.
+[NOTES.md](NOTES.md) covers architecture, the sales report contract, the endpoint and limitations of
+each tool, npm publishing, troubleshooting, and a comparison with
+[`ryaker/appstore-connect-mcp`](https://github.com/ryaker/appstore-connect-mcp), the project that
+inspired the design.
 
-## 🤝 Contribuir
+## 🤝 Contributing
 
-Issues y PRs bienvenidos en [issues](https://github.com/davidneyra2804/appstoreconnect-mcp/issues).
-El código llega por ramas (`feature/...`, `fix/...`) con PR a `main`.
+Issues and pull requests are welcome. Use the [issue tracker](https://github.com/davidneyra2804/appstoreconnect-mcp/issues)
+to report problems or propose changes. Submit code from a branch (`feature/...`, `fix/...`) in a pull request targeting `main`.
 
-## 📄 Licencia
+## 📄 License
 
-MIT — [LICENSE](LICENSE). Atribución de upstream: [NOTICE](NOTICE).
+MIT — [LICENSE](LICENSE). Upstream attribution: [NOTICE](NOTICE).
