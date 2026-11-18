@@ -396,10 +396,10 @@ authorizes publishing, which keeps the workflow short.
 
 | Symptom | Cause | Solution |
 | --- | --- | --- |
-| `Configuration error {message=Missing required environment variable(s): APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_PATH.}` on `stderr`, with an empty `stdout` | Required settings are missing | Set `APPLE_KEY_ID`, `APPLE_ISSUER_ID`, and one of the two private key variables. The error goes to `stderr` and `stdout` stays empty by design |
+| `Configuration error {message=Missing required environment variable(s): APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_PATH.}` on `stderr`, with an empty `stdout` | Required settings are missing | Set `APPLE_KEY_ID`, `APPLE_ISSUER_ID` and the private key: `APPLE_PRIVATE_KEY` (recommended) or `APPLE_PRIVATE_KEY_PATH`. The error goes to `stderr` and `stdout` stays empty by design |
 | `401` or `403` when calling the API | The `.p8` key does not match the `issuerId`, or the key has been revoked | Verify that the key and `issuerId` belong to the same App Store Connect team |
 | `403` from `GET /v1/apps` | The API key lacks permission to access the resources | Regenerate the key in App Store Connect → Integrations |
-| Passing the key through an environment variable instead of a file | `APPLE_PRIVATE_KEY` contains raw or base64-encoded PEM | Both formats work. For a file, `APPLE_PRIVATE_KEY_PATH` is the simplest option and avoids pasting line breaks |
+| Passing the key through an environment variable instead of a file | `APPLE_PRIVATE_KEY` contains the PEM text of the `.p8` key: real line breaks, `\n` escapes or base64 | All three forms work. Inline `APPLE_PRIVATE_KEY` is the recommended one, because a client that runs in another environment cannot read a path on your disk. Use `APPLE_PRIVATE_KEY_PATH` only when the client runs on the same machine as the file |
 | The server cannot see the variables | The MCP client passes variables through its own `env` block | Check the `env` block in the client configuration. The child process inherits only the settings declared there |
 
 ### Publishing

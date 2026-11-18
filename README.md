@@ -4,13 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 
-A **read-only** MCP (Model Context Protocol) server for Apple's App Store Connect API.
-The local **stdio** transport connects to **Claude Desktop**, **Cursor**, **Windsurf**, or any
-other MCP client. The server sends only `GET` requests to the API.
+A **read-only** MCP (Model Context Protocol) server for Apple's App Store Connect API, with
+**12 tools** that only read. The local **stdio** transport connects to **Claude Desktop**,
+**Cursor**, **Windsurf**, or any other MCP client. The server sends only `GET` requests to
+the API.
 
 📦 **npm**: [`@davidneyra2804/appstoreconnect-mcp`](https://www.npmjs.com/package/@davidneyra2804/appstoreconnect-mcp)
 🍎 **Data**: apps, App Store versions, TestFlight builds, beta groups, reviews, sales reports, app information, pricing, availability, in-app purchases, and analytics
-🔑 **Credentials**: App Store Connect API key (`.p8`)
+🔑 **Credentials**: App Store Connect API key (`.p8`), pasted inline as `APPLE_PRIVATE_KEY`
 📄 **License**: MIT — [LICENSE](LICENSE) and [NOTICE](NOTICE)
 
 ---
@@ -20,7 +21,8 @@ other MCP client. The server sends only `GET` requests to the API.
 ### 1. Generate an API key
 
 1. Go to [App Store Connect](https://appstoreconnect.apple.com/) → **Users and Access** → **Integrations** → **App Store Connect API**.
-2. Create a `.p8` key and record its **Key ID** and **Issuer ID**.
+2. Create a `.p8` key and record its **Key ID** and **Issuer ID**. The contents of the
+   downloaded file are what goes into `APPLE_PRIVATE_KEY`.
 
 ### 2. Add the server to your MCP client
 
@@ -33,7 +35,7 @@ other MCP client. The server sends only `GET` requests to the API.
       "env": {
         "APPLE_KEY_ID": "TU_KEY_ID",
         "APPLE_ISSUER_ID": "TU_ISSUER_ID",
-        "APPLE_PRIVATE_KEY_PATH": "/ruta/a/la/clave.p8"
+        "APPLE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
       }
     }
   }
@@ -43,10 +45,26 @@ other MCP client. The server sends only `GET` requests to the API.
 Configuration file locations: Claude Desktop `~/Library/Application Support/Claude/claude_desktop_config.json`,
 Cursor `~/.cursor/mcp.json`, Windsurf `~/.codeium/windsurf/mcp_config.json`, VS Code `.vscode/mcp.json`.
 
-> The server exchanges JSON-RPC messages over `stdin` and `stdout`. An idle terminal is expected.
+`APPLE_PRIVATE_KEY` takes the PEM text of the `.p8` key. Three forms are accepted: the PEM
+with real line breaks, the same PEM with the line breaks escaped as `\n` (the form above,
+the one that survives a JSON file), and the base64 of the whole PEM. Inline is the
+recommended form, because a client that runs in another environment may not be able to read
+a path on your disk.
 
-To pass the key in an environment variable, set `APPLE_PRIVATE_KEY` to the raw PEM or its
-base64-encoded value.
+If the client runs on the same machine as the `.p8` file, `APPLE_PRIVATE_KEY_PATH` is an
+alternative to `APPLE_PRIVATE_KEY`:
+
+```json
+"env": {
+  "APPLE_KEY_ID": "TU_KEY_ID",
+  "APPLE_ISSUER_ID": "TU_ISSUER_ID",
+  "APPLE_PRIVATE_KEY_PATH": "/ruta/a/la/clave.p8"
+}
+```
+
+If both are set, `APPLE_PRIVATE_KEY` takes precedence.
+
+> The server exchanges JSON-RPC messages over `stdin` and `stdout`. An idle terminal is expected.
 
 ---
 
@@ -89,7 +107,7 @@ All 12 tools are read-only.
 | --- | --- | --- |
 | `APPLE_KEY_ID` | Yes | Key ID of the `.p8` key |
 | `APPLE_ISSUER_ID` | Yes | App Store Connect Issuer ID (team ID) |
-| `APPLE_PRIVATE_KEY` | Yes\* | Raw or base64-encoded PEM key |
+| `APPLE_PRIVATE_KEY` | Yes\* | PEM text of the `.p8` key: real line breaks, `\n` escapes, or base64. Recommended |
 | `APPLE_PRIVATE_KEY_PATH` | Yes\* | Path to the `.p8` file, as an alternative to `APPLE_PRIVATE_KEY` |
 | `APPLE_APP_ID` | No | Restricts the server to one app (App Store Connect ID) |
 | `APPLE_BUNDLE_ID` | No | Restricts the server to one app (bundle ID) |
@@ -97,7 +115,7 @@ All 12 tools are read-only.
 | `APPLE_VENDOR_NUMBER` | No | Vendor number. Required for `get_sales_report` |
 | `LOG_LEVEL` | No | `debug`, `info` (default), `warn`, or `error` |
 
-\* Configure exactly one of these two variables.
+\* Configure one of the two: `APPLE_PRIVATE_KEY` (recommended) or `APPLE_PRIVATE_KEY_PATH`.
 
 If you set multiple scope variables, **every variable** must identify the same app. The scope
 remains limited to that app. See [NOTES.md](NOTES.md) for details.
