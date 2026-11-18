@@ -1,6 +1,6 @@
 {
   "name": "@davidneyra2804/appstoreconnect-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read-only MCP stdio server for the Apple App Store Connect API",
   "main": "dist/server.js",
   "type": "module",
