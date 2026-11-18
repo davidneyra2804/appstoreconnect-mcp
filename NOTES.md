@@ -1,335 +1,331 @@
 # NOTES
 
-Documentación extendida de `appstoreconnect-mcp`. El [README](README.md) es la referencia rápida;
-aquí queda el detalle: arquitectura, contratos, publicación y problemas conocidos.
+Extended documentation for `appstoreconnect-mcp`. The [README](README.md) is the quick reference.
+This document covers the architecture, tool contracts, publishing, and known issues.
 
 ---
 
-## 1. Qué es y qué no es
+## 1. What the server does
 
-Un servidor MCP de solo lectura sobre la API pública de App Store Connect, con transporte local
-por stdio.
+A read-only MCP server for the public App Store Connect API, using a local stdio transport.
 
-| Incluido | Fuera de alcance (fases posteriores) |
+| Included | Out of scope (later phases) |
 | --- | --- |
-| Transporte stdio local | Transporte HTTP / OAuth |
-| `list_apps`, `get_app` | Datos numéricos de un informe de analítica |
-| `list_app_store_versions` | Operaciones de escritura |
+| Local stdio transport | HTTP / OAuth transport |
+| `list_apps`, `get_app` | Numerical data from an analytics report |
+| `list_app_store_versions` | Write operations |
 | `list_builds` (TestFlight) | |
 | `list_beta_groups` (TestFlight) | |
 | `list_customer_reviews` | |
-| `get_sales_report` (informe diario) | |
-| `get_app_info_details` (ficha de la app) | |
-| `get_app_pricing` (precios por territorio) | |
-| `get_app_availability` (disponibilidad) | |
-| `get_in_app_purchases` (compras in-app) | |
-| `get_analytics` (solicitudes de informe de analítica) | |
+| `get_sales_report` (daily report) | |
+| `get_app_info_details` (app information) | |
+| `get_app_pricing` (pricing by territory) | |
+| `get_app_availability` (availability) | |
+| `get_in_app_purchases` (in-app purchases) | |
+| `get_analytics` (analytics report requests) | |
 
-El servidor solo emite peticiones `GET`. El cliente no contiene ningún método que haga `POST`,
-`PATCH`, `PUT` o `DELETE`.
+The server sends only `GET` requests. The client has no methods that send `POST`,
+`PATCH`, `PUT`, or `DELETE` requests.
 
 ---
 
-## 2. Arquitectura
+## 2. Architecture
 
-| Fichero | Responsabilidad |
+| File | Responsibility |
 | --- | --- |
-| `src/tools.ts` | Inventario de herramientas. Única fuente de verdad de lo que el servidor expone |
-| `src/config.ts` | Lectura y validación de variables de entorno, incluida la de alcance |
-| `src/appstore-client.ts` | Cliente de App Store Connect: firma JWT ES256 y peticiones `GET` |
-| `src/scope.ts` | Comprobación de alcance por app antes de cualquier petición |
-| `src/sales-report.ts` | Lectura del informe de ventas (TSV comprimido con gzip) |
-| `src/logger.ts` | Logs a `stderr` con redacción de secretos |
-| `src/server.ts` | Servidor MCP: registro de herramientas y despacho |
-| `src/stdio.ts` | Entrada por stdio; instala la redirección de `console` a `stderr` |
-| `test/` | Suite con fixtures, sin red y sin credenciales reales |
+| `src/tools.ts` | Tool inventory and authoritative list of what the server exposes |
+| `src/config.ts` | Reads and validates environment variables, including scope settings |
+| `src/appstore-client.ts` | App Store Connect client that signs ES256 JWTs and sends `GET` requests |
+| `src/scope.ts` | Checks app scope before each request |
+| `src/sales-report.ts` | Reads the sales report (gzip-compressed TSV) |
+| `src/logger.ts` | Logs to `stderr` and redacts secrets |
+| `src/server.ts` | MCP server that registers and dispatches tools |
+| `src/stdio.ts` | stdio entry point that redirects `console` to `stderr` |
+| `test/` | Fixture-based test suite that runs offline without real credentials |
 
 ---
 
-## 3. Inventario de herramientas
+## 3. Tool inventory
 
-`src/tools.ts` es el inventario. La suite comprueba que el conjunto registrado en el servidor
-coincide **exactamente** con esa lista y que ninguna herramienta de escritura está presente: el
-prefijo de verbo (`create`, `update`, `delete`, `submit`, …) hace fallar el test.
+`src/tools.ts` defines the inventory. The test suite checks that the registered tools match the
+list **exactly**. A tool name with a write verb prefix (`create`, `update`, `delete`, `submit`, …)
+fails the test.
 
-Un argumento desconocido, ausente o fuera de rango se rechaza antes de emitir cualquier petición de
-red.
+The server rejects unknown, missing, or out-of-range arguments before sending any network request.
 
-El inventario actual es de **12 herramientas de lectura**: las 7 primeras (`list_apps`, `get_app`,
+The inventory contains **12 read-only tools**: the original seven (`list_apps`, `get_app`,
 `list_app_store_versions`, `list_builds`, `list_beta_groups`, `list_customer_reviews`,
-`get_sales_report`) y las 5 de ficha, precios, disponibilidad, compras in-app y analítica que se
-detallan en la sección 6.
+`get_sales_report`) and the five covering app information, pricing, availability, in-app purchases,
+and analytics described in section 6.
 
-`APP_SCOPED_TOOLS` es la lista de las tools de alcance por app. Todas las que toman `appId` están en
-esa lista, y la suite comprueba que ninguna tool de alcance se quede sin declarar `appId` ni sin
-exigirlo: una tool de alcance sin `appId` obligatorio dejaría pasar apps ajenas.
+`APP_SCOPED_TOOLS` lists the tools scoped to one app. It includes every tool that takes `appId`.
+The suite checks that each scoped tool declares and requires `appId`. Requiring it prevents calls
+to apps outside the configured scope.
 
 ---
 
-## 4. Identificadores de app y alcance
+## 4. App identifiers and scope
 
-`APPLE_APP_ID` y `APPLE_APP_STORE_SKU` no son intercambiables:
+`APPLE_APP_ID` and `APPLE_APP_STORE_SKU` identify different fields.
 
-| Variable | Identificador | Dónde se ve |
+| Variable | Identifier | Where to find it |
 | --- | --- | --- |
-| `APPLE_APP_ID` | App Store Connect app id, el `id` opaco del recurso `apps` | Es el valor que las tools aceptan como `appId`; `list_apps` lo imprime como "App id" |
-| `APPLE_APP_STORE_SKU` | App Store ID, el atributo `sku` del recurso `apps` | El número visible en App Store Connect y en la App Store; `list_apps` lo imprime como "App Store id" |
+| `APPLE_APP_ID` | App Store Connect app ID, the opaque `id` of the `apps` resource | Tools accept it as `appId`. `list_apps` prints it as "App id" |
+| `APPLE_APP_STORE_SKU` | App Store ID, the `sku` attribute of the `apps` resource | The number displayed in App Store Connect and the App Store. `list_apps` prints it as "App Store id" |
 
-Si se define más de una variable de alcance, **todas** tienen que coincidir: el alcance no se puede
-ampliar definiendo una segunda variable.
+If you set multiple scope variables, **all of them** must identify the same app. The scope remains
+limited to that app.
 
-`APPLE_APP_STORE_ID` ya no se acepta. Era ambiguo (se documentaba como App Store ID pero las tools
-identifican la app por su `id`) y el servidor lo rechaza al arrancar con un mensaje que indica la
-variable correcta, en lugar de interpretar el valor de una forma que pudiera denegar la app
-permitida.
-
----
-
-## 5. Informe de ventas
-
-`get_sales_report` lee el informe diario de ventas de la cuenta. El informe de Apple no es JSON: es
-un **TSV comprimido con gzip**, con columnas nombradas y con filas de varias monedas mezcladas.
-
-- Se pide el subtipo `SUMMARY` y la frecuencia `DAILY`. Sin `filter[reportSubType]`, Apple responde `400`.
-- El número de proveedor se toma de `APPLE_VENDOR_NUMBER`. No es el `issuerId` ni el App Store ID: Apple rechaza la petición con el valor equivocado.
-- Las columnas se leen por nombre, no por posición, y cada columna admite varias grafías (`Units`/`Quantity`, `Developer Proceeds`/`Proceeds`, `SKU`/`Apple Identifier`).
-- **Los importes nunca se suman entre monedas.** Cada moneda tiene su propia cifra y los importes se redondean a céntimos en cada paso, para que la aritmética binaria no desplace el resultado.
-- La fecha por defecto es **ayer**: Apple genera el informe diario durante el día siguiente, así que el informe de hoy todavía no existe.
-- Se distinguen dos casos que Apple responde igual con un `404`: un día **sin ventas** y un informe **aún no generado**. Solo el detalle del error los separa.
-
-El informe pertenece a la cuenta, no a una app: lista todas las apps del proveedor. La herramienta es de
-alcance por app, así que solo devuelve las unidades y los ingresos de la app solicitada.
-
-El análisis de TSV, gzip y multicolumna vive en `src/sales-report.ts` y está cubierto por pruebas
-deterministas, con fixtures sintéticos del layout de columnas de Apple.
+The server rejects `APPLE_APP_STORE_ID` at startup and tells you which variable to use. The old
+name was ambiguous because the documentation referred to the App Store ID while the tools identified
+apps by `id`. Requiring the correct variable avoids rejecting the app you intended to allow.
 
 ---
 
-## 6. Ficha, precios, disponibilidad, compras in-app y analítica
+## 5. Sales report
 
-Las cinco herramientas siguientes amplían el inventario de solo lectura. Todas son de alcance por app:
-toman `appId` y se comprueban contra el alcance configurado antes de emitir cualquier petición.
+`get_sales_report` reads the account's daily sales report. Apple returns a **gzip-compressed TSV**
+with named columns and rows in multiple currencies.
 
-Los endpoints se verificaron contra la documentación de Apple
-(`developer.apple.com/documentation/appstoreconnectapi`), no contra el código de upstream: upstream no
-expone precios, disponibilidad ni compras in-app, y su equivalente de analítica es de escritura.
+- The request uses the `SUMMARY` subtype and `DAILY` frequency. Apple returns `400` if `filter[reportSubType]` is missing.
+- The vendor number comes from `APPLE_VENDOR_NUMBER`. Apple rejects the request if you supply the `issuerId` or App Store ID in its place.
+- The parser looks up columns by name, with multiple accepted names for each column (`Units`/`Quantity`, `Developer Proceeds`/`Proceeds`, `SKU`/`Apple Identifier`).
+- **Totals are calculated separately for each currency.** The parser rounds amounts to cents at each step to prevent binary floating-point drift.
+- The date defaults to **yesterday**. Apple generates each daily report during the following day, so today's report is still unavailable.
+- Apple returns `404` for both a day **with no sales** and a report it **has yet to generate**. The error details distinguish the two cases.
+
+The account's report lists all of the vendor's apps. The tool returns only the units and proceeds
+for the requested app.
+
+`src/sales-report.ts` handles TSV parsing, gzip decompression, and column lookup. Deterministic
+tests use synthetic fixtures based on Apple's column layout.
+
+---
+
+## 6. App information, pricing, availability, in-app purchases, and analytics
+
+These five tools extend the read-only inventory. Each takes `appId` and checks it against the
+configured scope before sending any request.
+
+The endpoints were verified against Apple's documentation
+(`developer.apple.com/documentation/appstoreconnectapi`). Upstream exposes none of the pricing,
+availability, or in-app purchase endpoints, and its analytics equivalent is a write operation.
 
 ### `get_app_info_details`
 
 | | |
 | --- | --- |
 | Endpoint | `GET /v1/apps/{id}/appInfos` |
-| Parámetros | `include=appInfoLocalizations`, `limit` |
-| Scopes | ninguno adicional: los mismos de la clave de API |
+| Parameters | `include=appInfoLocalizations`, `limit` |
+| Scopes | The API key's existing scopes |
 
-Una app tiene **una ficha por versión de App Store**: la que está viva y la que entrará en vigor con la
-próxima versión. Por eso el resultado es una lista y no un objeto.
+An app has **one app information record per App Store version**: one for the live version and one
+that takes effect with the next version. The result is a list.
 
-Devuelve el estado (`appStoreState`, `state`), la clasificación por edad (`appStoreAgeRating`) y las
-clasificaciones por territorio (Australia, Brasil, Francia, Corea), las categorías y subcategorías
-primarias y secundarias, y las localizaciones (idioma, nombre, subtítulo, URL y texto de la política de
-privacidad).
+The tool returns the status (`appStoreState`, `state`), age rating (`appStoreAgeRating`), territory
+ratings (Australia, Brazil, France, Korea), primary and secondary categories and subcategories,
+and localizations (language, name, subtitle, privacy policy URL and text).
 
-**Limitaciones:**
+**Limitations**
 
-- La categoría se devuelve con su **id** cuando Apple no la incluye en la respuesta. La tool pide las
-  categorías en línea, así que normalmente llega el nombre; si no, el id sigue identificando la categoría.
-- `privacyPolicyText` puede venir vacío: Apple lo omite cuando la política es solo una URL.
-- El endpoint `appInfoLocalizations` existe por separado (`GET /v1/apps/{id}/appInfoLocalizations`).
-  Aquí se usa la variante `include`, que devuelve los idiomas en la misma llamada.
+- The tool requests categories inline and usually receives their names. When Apple omits the
+  category from the response, the tool returns its **ID**.
+- `privacyPolicyText` can be empty. Apple omits it when the policy consists only of a URL.
+- `appInfoLocalizations` also has a separate endpoint (`GET /v1/apps/{id}/appInfoLocalizations`).
+  The tool uses `include` to retrieve the localizations in the same request.
 
 ### `get_app_pricing`
 
 | | |
 | --- | --- |
 | Endpoint | `GET /v1/apps/{id}/appPricePoints` |
-| Parámetros | `include=territory`, `limit`, `filter[territory]` |
-| Scopes | ninguno adicional |
+| Parameters | `include=territory`, `limit`, `filter[territory]` |
+| Scopes | No additional scopes |
 
-Un **price point** es el precio de la app en **un** territorio, así que la lista tiene una entrada por
-territorio. Cada entrada trae el precio al cliente (`customerPrice`), los ingresos del desarrollador
-(`proceeds`) y la moneda del territorio.
+A **price point** is the app's price in **one** territory, so the list contains one entry per
+territory. Each entry includes the customer price (`customerPrice`), developer proceeds
+(`proceeds`), and the territory's currency.
 
-**Limitaciones:**
+**Limitations**
 
-- El precio es una **cadena**, no un número: Apple la formatea con su propia configuración regional.
-  No se reinterpreta ni se convierte a número.
-- Los importes que se devuelven son los **brutos**: no se les aplica ningún tipo de cambio ni se suman
-  entre monedas. Cada territorio es una fila independiente.
-- Una app que nunca se ha puesto a la venta puede no tener ningún price point.
-- El endpoint está en la **v3** del modelo de precio (`appPricePoints` / `AppPricePointV3`). No se usa
-  `GET /v1/appStoreVersions/{id}/appPrice`: ese endpoint no existe, el precio se asocia a la app y no a
-  la versión.
-- La API ofrece `filter[territory]` y `GET /v1/apps/{id}/appPriceSchedule`; esta tool no los expone
-  todavía, la superficie se amplía en una fase posterior si hace falta.
+- The price is a **string** formatted according to Apple's locale settings. The tool returns the
+  string as received.
+- The tool returns **gross** amounts in their original currencies. It applies no exchange rates
+  and keeps each territory on a separate row, without summing amounts across currencies.
+- An app that has never been offered for sale may have zero price points.
+- The endpoint uses **v3** of the pricing model (`appPricePoints` / `AppPricePointV3`). Pricing
+  belongs to the app. The API has no `GET /v1/appStoreVersions/{id}/appPrice` endpoint.
+- The API offers `filter[territory]` and `GET /v1/apps/{id}/appPriceSchedule`. The tool omits
+  both for now. A later phase can expose them if needed.
 
 ### `get_app_availability`
 
 | | |
 | --- | --- |
 | Endpoint | `GET /v1/apps/{id}/appAvailabilityV2` |
-| Parámetros | `include=territoryAvailabilities`, `limit[territoryAvailabilities]` |
-| Scopes | ninguno adicional |
+| Parameters | `include=territoryAvailabilities`, `limit[territoryAvailabilities]` |
+| Scopes | No additional scopes |
 
-Devuelve el registro de disponibilidad de la app y, en línea, una entrada por territorio con si la app
-está disponible allí, la fecha de salida, si hay preventa (`preOrderEnabled`,
-`preOrderPublishDate`) y los estados de contenido (`contentStatuses`).
+The tool returns the app's availability record with an inline entry for each territory. Each entry
+includes whether the app is available, its release date, pre-order details (`preOrderEnabled`,
+`preOrderPublishDate`), and content statuses (`contentStatuses`).
 
-**Limitaciones:**
+**Limitations**
 
-- El endpoint es la **v2** (`appAvailabilityV2` / `AppAvailabilityV2`). La v1 (`GET /v1/apps/{id}/appAvailability`)
-  es el modelo antiguo y queda obsoleto.
-- El **territorio se identifica por su código** (`USA`, `ESP`, `JPN`, …). La API no expone el nombre del
-  país junto al código; el nombre se puede cruzar con `GET /v1/territories`, que esta tool no llama.
-- La app puede tener **más de un** registro de disponibilidad (por ejemplo, cuando hay preventa en
-  curso). El resultado es una lista por esa razón.
+- The endpoint uses **v2** (`appAvailabilityV2` / `AppAvailabilityV2`). The v1 model
+  (`GET /v1/apps/{id}/appAvailability`) is deprecated.
+- The API identifies each **territory by code** (`USA`, `ESP`, `JPN`, …) and omits the country
+  name. To look up the name, use `GET /v1/territories` separately.
+- The app can have **more than one** availability record, for example during a pre-order period.
+  The tool returns a list to cover this case.
 
 ### `get_in_app_purchases`
 
 | | |
 | --- | --- |
 | Endpoint | `GET /v1/apps/{id}/inAppPurchasesV2` |
-| Parámetros | `limit` |
-| Scopes | ninguno adicional |
+| Parameters | `limit` |
+| Scopes | No additional scopes |
 
-Cubre consumibles, no consumibles, suscripciones no renovables y **suscripciones auto-renovables**: la
-tool usa el endpoint **v2**, que lo tiene todo. Devuelve nombre, `productId`, tipo
-(`inAppPurchaseType`) y estado (`state`).
+The **v2** endpoint covers consumables, non-consumables, non-renewing subscriptions, and
+**auto-renewable subscriptions**. The tool returns the name, `productId`, type
+(`inAppPurchaseType`), and status (`state`).
 
-**Limitaciones:**
+**Limitations**
 
-- El endpoint heredado `GET /v1/apps/{id}/inAppPurchases` **no** cubre las suscripciones
-  auto-renovables: por eso no se usa.
-- `productId` es el identificador que usa la app en el código (el que va en `SKPayment`), no un id de
-  App Store Connect.
-- El estado refleja el del **producto**, no el de la versión concreta de la suscripción.
-- Apple permite filtrar por tipo, nombre, `productId` y estado; esta tool no expone esos filtros todavía.
+- The legacy `GET /v1/apps/{id}/inAppPurchases` endpoint omits auto-renewable subscriptions,
+  so the tool uses v2.
+- `productId` is the identifier used by the app code (in `SKPayment`). App Store Connect has
+  a separate resource ID.
+- The status applies to the **product** as a whole. Individual subscription versions have their
+  own status.
+- Apple supports filtering by type, name, `productId`, and status. The tool currently omits
+  those filters.
 
 ### `get_analytics`
 
 | | |
 | --- | --- |
 | Endpoint | `GET /v1/apps/{id}/analyticsReportRequests` |
-| Parámetros | `include=reports`, `limit`, `limit[reports]`, `filter[accessType]` |
-| Scopes | ninguno adicional |
+| Parameters | `include=reports`, `limit`, `limit[reports]`, `filter[accessType]` |
+| Scopes | No additional scopes |
 
-Devuelve las **solicitudes de informe de analítica** que la cuenta ya tiene para la app, con su tipo de
-acceso (`accessType`: `ONE_TIME_SNAPSHOT` u `ONGOING`), si se han detenido por inactividad
-(`stoppedDueToInactivity`) y los informes que produjo cada una (nombre y categoría: `APP_USAGE`,
-`APP_STORE_ENGAGEMENT`, `COMMERCE`, `FRAMEWORK_USAGE`, `PERFORMANCE`).
+The tool returns the account's existing **analytics report requests** for the app. Each entry
+includes the access type (`accessType`: `ONE_TIME_SNAPSHOT` or `ONGOING`), whether the request
+stopped due to inactivity (`stoppedDueToInactivity`), and the name and category of each report it
+produced (`APP_USAGE`, `APP_STORE_ENGAGEMENT`, `COMMERCE`, `FRAMEWORK_USAGE`, `PERFORMANCE`).
 
-**Limitaciones — esta es la herramienta con más recorrido:**
+**Limitations and scope for future work**
 
-- **Crear una solicitud de informe es una escritura** (`POST /v1/analyticsReportRequests`), así que
-  esta tool **no** la hace. Solo lee las solicitudes que ya existen. Para pedir un informe nuevo hay que
-  ir a App Store Connect o usar una tool de escritura, que este servidor no tiene.
-- Los datos del informe (instancias, segmentos, el CSV) están **más allá** de esta tool. La API los
-  expone por otra cadena de endpoints:
+- **Creating a report request requires a write** (`POST /v1/analyticsReportRequests`). This tool
+  reads existing requests only. To request a new report, use App Store Connect or a separate
+  tool with write access.
+- Report data (instances, segments, and CSV files) is **outside the scope** of this tool. The API
+  exposes it through four endpoints:
   `GET /v1/analyticsReportRequests/{id}/reports` → `GET /v1/analyticsReports/{id}/instances` →
-  `GET /v1/analyticsReportInstances/{id}/segments` → `GET /v1/analyticsReportSegments/{id}`. Es una
-  cadena de cuatro llamadas y el CSV del segmento se descarga por una URL con token, así que queda
-  fuera de la superficie de lectura de esta fase.
-- El contenido de un informe no está en la respuesta de la solicitud: la tool devuelve el **catálogo**
-  de informes de la app, no sus números.
+  `GET /v1/analyticsReportInstances/{id}/segments` → `GET /v1/analyticsReportSegments/{id}`.
+  Retrieving the data requires all four calls and a tokenized URL to download the segment CSV,
+  so it falls outside the read-only scope of this phase.
+- The request response contains the app's report **catalog**. The report figures are available
+  through the separate endpoints above.
 
-### Errores frecuentes de las cinco
+### Common errors for these five tools
 
-| Síntoma | Causa | Solución |
+| Symptom | Cause | Solution |
 | --- | --- | --- |
-| `403` al pedir precios, disponibilidad o compras in-app | La clave de API no tiene permiso sobre esos recursos | Comprobar los roles de la clave en App Store Connect → Integraciones. Un rol de solo lectura sin acceso a App Store Connect devuelve `403` |
-| `404` en `appInfos` | La app nunca ha estado en la App Store | Una app sin versión publicada no tiene ficha |
-| `404` en `appPricePoints` | La app nunca ha sido puesta a la venta, o no tiene precio en ese territorio | Un price point por territorio: un territorio sin precio no devuelve entrada |
-| Lista de disponibilidad vacía | La app no tiene registro de disponibilidad | Comprobar que la app está publicada en algún territorio |
-| `get_analytics` no devuelve nada | La cuenta no ha creado ninguna solicitud de informe para esa app | Esta tool no crea solicitudes: hay que crearlas en App Store Connect |
-| `appAvailabilityV2` devuelve varios registros | La app tiene más de una versión de disponibilidad (preventa y venta) | Se muestran todos |
+| `403` when requesting pricing, availability, or in-app purchases | The API key lacks permission to access those resources | Check the key's roles in App Store Connect → Integrations. A read-only role without App Store Connect access returns `403` |
+| `404` from `appInfos` | The app has never been on the App Store | An app needs a published version to have an app information record |
+| `404` from `appPricePoints` | The app has never been offered for sale or has no price in that territory | Each territory has its own price point. A territory without a price has no entry |
+| Empty availability list | The app has no availability record | Check that the app is published in at least one territory |
+| `get_analytics` returns nothing | The account has created no report requests for that app | Create the requests in App Store Connect |
+| `appAvailabilityV2` returns multiple records | The app has more than one availability record (pre-order and sale) | The tool shows every record |
 
 
 ---
 
-## 7. Transporte stdio
+## 7. stdio transport
 
-`stdout` transporta exclusivamente tramas JSON-RPC del protocolo MCP. Todos los diagnósticos, avisos
-y trazas van a `stderr`.
+`stdout` carries only the MCP protocol's JSON-RPC frames. All diagnostics, warnings,
+and traces go to `stderr`.
 
-La redirección de `console` a `stderr` se instala antes de importar cualquier otro módulo, de modo que
-una dependencia que registre al importarse no puede corromper el flujo del protocolo.
+The entry point redirects `console` to `stderr` before importing other modules. This prevents
+dependencies that log during import from corrupting the protocol stream.
 
-Si falta la configuración obligatoria, el servidor escribe el error en `stderr`, deja `stdout` vacío y
-termina con código distinto de cero.
-
----
-
-## 8. Seguridad de los logs
-
-- Todos los diagnósticos van a `stderr`; `stdout` nunca lleva texto que no sea JSON-RPC.
-- Los valores secretos se redactan antes de escribir: claves con nombre de secreto (`privateKey`, `authorization`, `token`, …) se sustituyen por una huella no reversible.
-- El material secreto incrustado en texto libre también se redacta: bloques PEM, tokens `Bearer` y pares `clave: valor`.
-- Las cadenas largas se truncan.
+If required configuration is missing, the server writes the error to `stderr`, leaves
+`stdout` empty, and exits with a nonzero status.
 
 ---
 
-## 9. Comparación con `ryaker/appstore-connect-mcp`
+## 8. Log security
 
-Este repositorio **no** es una copia ni un superconjunto de
-[ryaker/appstore-connect-mcp](https://github.com/ryaker/appstore-connect-mcp) (MIT), que sigue siendo
-la referencia del dominio.
+- All diagnostics go to `stderr`. `stdout` carries only JSON-RPC.
+- The logger redacts secret values before writing. It replaces values under secret field names (`privateKey`, `authorization`, `token`, …) with a non-reversible fingerprint.
+- The logger also redacts secrets embedded in free-form text, including PEM blocks, `Bearer` tokens, and `clave: valor` pairs.
+- The logger truncates long strings.
 
-| | upstream | este repositorio |
+---
+
+## 9. Comparison with `ryaker/appstore-connect-mcp`
+
+[ryaker/appstore-connect-mcp](https://github.com/ryaker/appstore-connect-mcp) (MIT) remains the
+reference project in this domain. This repository is a separate implementation with its own scope.
+
+| | upstream | this repository |
 | --- | --- | --- |
-| Herramientas | 15, incluidas de escritura | 12, todas de lectura |
-| Transporte | HTTP, stdio y SSE, con OAuth2/Auth0 | stdio local |
-| Empaquetado | npm, Docker, Vercel, Smithery, MCP Registry | npm |
-| Autenticación | clave de API o OAuth2/Auth0 | clave de API (`.p8`) |
-| Pruebas | scripts contra la API real | suite con fixtures, sin red, en CI |
+| Tools | 15, including write tools | 12, all read-only |
+| Transport | HTTP, stdio, and SSE, with OAuth2/Auth0 | Local stdio |
+| Packaging | npm, Docker, Vercel, Smithery, MCP Registry | npm |
+| Authentication | API key or OAuth2/Auth0 | API key (`.p8`) |
+| Tests | Scripts that call the live API | Offline fixture-based suite in CI |
 
-Lo que este repositorio hace mejor:
+What this repository improves:
 
-- **La escritura no existe por construcción.** El inventario vive en `src/tools.ts` y la suite comprueba que el conjunto registrado coincide exactamente con esa lista y que ninguna herramienta de escritura está presente.
-- **El alcance por app se comprueba antes de cualquier petición**, no después.
-- **`stdout` queda reservado al protocolo**; diagnósticos y trazas van a `stderr`, y los secretos se redactan antes de escribirse.
-- **El informe de ventas se lee como el informe que es**: TSV comprimido por gzip, subtipo `SUMMARY`, ingresos por moneda y sin sumar nunca importes de monedas distintas. Upstream mantiene su equivalente roto en `main`; su PR #5 lo corrige (verificado el 2026-11-17: sigue abierto).
-- **Las cinco tools de ficha, precios, disponibilidad, compras in-app y analítica no existen en upstream.** Upstream no expone precios, disponibilidad ni compras in-app, y su tool de analítica (`createAnalyticsReportRequest`) es de **escritura**: hace un `POST` a `/analyticsReportRequests`. Aquí la misma información se lee con `GET /v1/apps/{id}/analyticsReportRequests`, y el resto de endpoints se verificaron contra la documentación de Apple, no contra el código de upstream.
+- **Read-only by design.** The inventory lives in `src/tools.ts`. The test suite checks that the registered tools match it exactly and that the server exposes zero write tools.
+- **The server checks app scope before every request.**
+- **`stdout` is reserved for protocol messages.** Diagnostics and traces go to `stderr`, and the logger redacts secrets before writing.
+- **The server parses the Apple sales report directly.** It reads a gzip-compressed TSV of subtype `SUMMARY`, reports proceeds per currency, and keeps totals for each currency separate. The equivalent upstream tool remains broken on `main`. Upstream PR #5 fixes it and was still open when checked on 2026-11-17.
+- **This repository adds five read-only tools for app information, pricing, availability, in-app purchases, and analytics.** Upstream lacks the pricing, availability, and in-app purchase operations. Its analytics tool (`createAnalyticsReportRequest`) performs a **write** by sending a `POST` to `/analyticsReportRequests`. This server reads the information with `GET /v1/apps/{id}/analyticsReportRequests`. Apple's documentation was used to verify the other endpoints.
 
-Pendiente de adoptar de upstream: el transporte HTTP con el servidor atado a `127.0.0.1` por defecto
-(PR #6, también abierto). El requisito queda escrito en la sección 13.
+A possible future addition from upstream is an HTTP transport that binds to `127.0.0.1` by default
+(PR #6, also open). Section 13 specifies the requirement.
 
 ---
 
-## 10. Publicación en npm
+## 10. npm publishing
 
-El paquete se publica en el registro público de npm como
+The package is published to the public npm registry as
 `@davidneyra2804/appstoreconnect-mcp`.
 
-`.github/workflows/publish.yml` publica cuando se publica una release (o a mano, con
-`workflow_dispatch`). La autenticación usa OIDC: npm cambia la identidad del runner por un token de
-publicación de corta duración, así que el repositorio no guarda ningún secreto de npm.
+`.github/workflows/publish.yml` runs when a release is published or when manually triggered with
+`workflow_dispatch`. Authentication uses OIDC. npm exchanges the runner's identity for a
+short-lived publishing token, so the repository stores no npm secret.
 
-La publicación genera un artefacto de procedencia (`--provenance`): npm firma de forma criptográfica
-que el tarball salió de este repositorio y de este workflow. El flag se pasa en el propio comando,
-**no** en `publishConfig`, porque npm solo genera procedencia dentro de GitHub Actions o GitLab CI: si
-se fijara en `publishConfig`, una publicación manual desde un portátil fallaría.
+Publishing generates a provenance artifact (`--provenance`). npm cryptographically attests that
+the tarball came from this repository and workflow. The publish command sets the flag directly
+because npm only generates provenance in GitHub Actions or GitLab CI. Setting the flag in
+`publishConfig` would cause a manual publish from a laptop to fail.
 
-### Trusted publishing: configuración en npm
+### Trusted publishing: npm setup
 
-Se configura **en la página del paquete ya publicado**, no en este repositorio:
+Configure trusted publishing **on the published package's page**:
 
-1. Entrar en [npmjs.com](https://www.npmjs.com) con la cuenta que publica.
-2. Ir a **Packages** → `@davidneyra2804/appstoreconnect-mcp` → **Settings**.
-3. En **Trusted publishing**, activar el *trusted publisher* para GitHub Actions.
-4. Rellenar:
+1. Sign in to [npmjs.com](https://www.npmjs.com) with the publishing account.
+2. Go to **Packages** → `@davidneyra2804/appstoreconnect-mcp` → **Settings**.
+3. Under **Trusted publishing**, enable a *trusted publisher* for GitHub Actions.
+4. Enter:
    - **Organization or user account**: `davidneyra2804`
    - **Repository**: `appstoreconnect-mcp`
-   - **Workflow filename**: `publish.yml` (solo el nombre del fichero, **sin** la ruta `.github/workflows/`)
-5. Guardar.
+   - **Workflow filename**: `publish.yml` (the filename only, without the `.github/workflows/` path)
+5. Save.
 
-Puntos que hay que comprobar al configurarlo:
+Check the following during setup:
 
-- **Permisos de publicación.** Las configuraciones creadas a partir de 2026-09-03 vienen con **solo** `npm stage publish` permitido. Hay que marcar explícitamente `npm publish` para que este workflow funcione tal cual.
-- **Caducidad.** La configuración **caduca** si no completa su primera publicación en los 2 días siguientes a crearla.
-- **Cerrar el acceso por token.** Una vez configurado y probado el *trusted publisher*, conviene ir a **Settings → Publishing access** y desactivar la publicación con token: la OIDC queda como único camino y deja de haber un token de larga vida que se pueda filtrar.
-- **La primera publicación hay que hacerla a mano**, porque el *trusted publisher* solo se puede crear una vez que el paquete existe en el registro.
+- **Publishing permissions.** Configurations created on or after 2026-09-03 allow only `npm stage publish` by default. Explicitly enable `npm publish` for this workflow to work as written.
+- **Expiration.** The configuration **expires** if its first publish does not complete within two days of setup.
+- **Token access.** After setting up and testing the *trusted publisher*, you can disable token-based publishing under **Settings → Publishing access**. OIDC then becomes the only publishing method, eliminating the need for a long-lived token that could leak.
+- **Publish the first version manually.** npm requires the package to exist in the registry before you can configure a *trusted publisher*.
 
-### Publicar una versión
+### Publish a version
 
 ```bash
 npm version patch        # actualiza package.json y package-lock.json
@@ -341,90 +337,88 @@ npm pack --dry-run       # comprueba qué entra en la tarball
 git tag v0.1.3 && git push origin v0.1.3
 ```
 
-La release dispara `.github/workflows/publish.yml`, que compila, comprueba los tipos, pasa la suite,
-verifica la tarball y publica.
+Publishing the GitHub release triggers `.github/workflows/publish.yml`, which builds the package,
+checks the types, runs the tests, verifies the tarball, and publishes it.
 
-El número de versión de `package.json` es el que se publica y tiene que coincidir con el de la tag de
-la release; el workflow falla si no coinciden. Las versiones publicadas son inmutables: corregir algo
-exige una versión nueva.
+The workflow publishes the version in `package.json` and fails if it differs from the release
+tag. Published versions are immutable, so corrections require a new version.
 
-La versión que el servidor anuncia en el saludo MCP se lee de `package.json` en tiempo de ejecución,
-así que un cliente ve siempre la versión del paquete que tiene instalado, no una constante que pueda
-quedarse desfasada.
+At runtime the server reads `package.json` for the version it announces in the MCP handshake.
+Clients therefore see the installed package version, without relying on a hard-coded constant
+that can go stale.
 
-### La versión `0.0.0-stage` que aparece en el registro
+### The `0.0.0-stage` version in the registry
 
-El registro muestra además una versión `0.0.0-stage` que no es una versión real: es un marcador de dos
-ficheros (~357 bytes) que quedó al probar el flujo de *staging* de npm. No está en `latest` y no
-afecta a la instalación ni a `npx`, pero se ve al listar las versiones.
+The registry also lists `0.0.0-stage`, a two-file placeholder (about 357 bytes) left over from
+testing npm's *staging* workflow. It appears in the version list outside `latest` and has no
+effect on installation or `npx`.
 
-Se puede rechazar, y solo lo puede hacer el propietario:
+Only the package owner can reject it:
 
 ```bash
 npm stage list                       # ver el stage pendiente
 npm stage reject <stage-id>          # quitarlo del registro
 ```
 
-Rechazarlo es una decisión del mantenedor, no un paso obligatorio.
+Rejection is optional and up to the maintainer.
 
-### Alternativa: `npm stage publish`
+### Alternative: `npm stage publish`
 
-npm recomienda una variante de Trusted Publishing en la que la CI **solo** empaqueta y sube la
-versión a *staging*, y el propietario la aprueba con su 2FA desde la web. En esa variante:
+npm recommends a Trusted Publishing variant in which CI **only** packages the version and
+uploads it to *staging*. The owner then approves it on the website using 2FA. In this variant:
 
-- npm solo permite `npm stage publish`, y `npm publish` queda deshabilitado.
-- El workflow usa `npm stage publish` en lugar de `npm publish`.
-- La versión queda pendiente en npmjs.com hasta que el propietario la aprueba.
+- npm allows only `npm stage publish` and disables `npm publish`.
+- The workflow runs `npm stage publish` in place of `npm publish`.
+- The version remains pending on npmjs.com until the owner approves it.
 
-La ventaja es que nada llega a `latest` sin una confirmación humana explícita. La desventaja es un
-paso manual por versión y que el *staging* de npm no es un canal con SLA ni métricas como el registro
-normal.
+Explicit human approval is required for a version to reach `latest`. This adds one manual step
+per version, and npm *staging* lacks the SLA and metrics of the regular registry.
 
-Para este paquete, que es de un solo mantenedor y publica pocas versiones, la opción recomendada es
-**Trusted Publishing con `npm publish` y aprobación por release de GitHub**: la tag de la release ya es
-el acto explícito y deliberado que autoriza la publicación, y el circuito es más corto.
-
----
-
-## 11. Problemas habituales
-
-### Instalación
-
-| Síntoma | Causa | Solución |
-| --- | --- | --- |
-| `npm error engine Unsupported engine` | Node anterior a 18 | Instalar Node 18 o posterior. El paquete es ESM puro y `type: module` |
-| `npm error cannot find module .../dist/stdio.js` al arrancar | Se instaló una tarball empaquetada sin compilar | No ocurre con las versiones publicadas: el script `prepack` compila antes de empaquetar. Si se ve, es una instalación local de una tarball creada a mano |
-| `EACCES` al escribir en la caché de npm (`.../_cacache/tmp`) al iniciar con `npx` | El usuario que ejecuta el cliente MCP no puede escribir en la caché configurada para npm en ese host | Añadir `npm_config_cache` al bloque `env` de ese servidor y asignarle una ruta que el usuario del cliente pueda crear y escribir. Corrige permisos de instalación del host; no cambia las credenciales ni los permisos de App Store Connect |
-| `command not found: appstoreconnect-mcp` tras `npm install --global` | El directorio global de npm no está en el `PATH` | Comprobar `npm bin -g` (o `npm prefix -g`) y añadirlo al `PATH` |
-| `npx` se queda colgado sin responder | Se está esperando una entrada por `stdin` | Es el comportamiento normal: el servidor espera tramas JSON-RPC. Ctrl+C para salir |
-
-### Autenticación
-
-| Síntoma | Causa | Solución |
-| --- | --- | --- |
-| `Configuration error {message=Missing required environment variable(s): APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_PATH.}` en `stderr`, con `stdout` vacío | Falta la configuración obligatoria | Rellenar `APPLE_KEY_ID`, `APPLE_ISSUER_ID` y una de las dos variables de clave privada. El error sale en `stderr` y `stdout` queda vacío a propósito |
-| `401` o `403` al llamar a la API | La clave `.p8` no corresponde al `issuerId`, o la clave está revocada | Revisar que la clave y el `issuerId` son del mismo equipo de App Store Connect |
-| `403` con `GET /v1/apps` | La clave de API no tiene permiso de acceso a los recursos | Regenerar la clave en App Store Connect → Integraciones |
-| La clave se pasa por variable de entorno y no por fichero | `APPLE_PRIVATE_KEY` con el PEM en bruto o en base64 | Ambas formas valen. Para un fichero, `APPLE_PRIVATE_KEY_PATH` es lo más simple y evita el pegado de saltos de línea |
-| El servidor no ve las variables | El cliente MCP las pasa en su propio bloque `env` | Comprobar el bloque `env` de la configuración del cliente: el proceso hijo solo hereda lo que se declare ahí |
-
-### Publicación
-
-| Síntoma | Causa | Solución |
-| --- | --- | --- |
-| `npm error This command requires you to be logged in` | No hay *trusted publisher* configurado para este repositorio y este workflow, o falta el permiso `id-token: write` | Configurarlo en npmjs.com → Packages → Settings → Trusted publishing, con el nombre de workflow `publish.yml` |
-| `npm error 402 Payment required` / `EOTP` | La versión ya existe en el registro | Subir la versión. Las versiones publicadas son inmutables |
-| `npm error Invalid package name` o `cannot publish over` | La versión de `package.json` no coincide con la de la tag, o la versión ya está publicada | Revisar la tag y la versión de `package.json` |
-| `npm warn No bin file found at dist/stdio.js` | La tarball se empaquetó sin compilar | `prepack` compila antes de empaquetar. Si aparece, es que la compilación falló: mirar el paso de build |
-| `npm error unsupported engine` | Node anterior a 18 | Node 18 o posterior |
-
-Reglas de npm que condicionan el flujo: la CLI 11.5.1 o posterior y Node 22.14 o posterior para OIDC;
-el *trusted publishing* solo se configura en la página de un paquete ya existente; y la procedencia
-(`--provenance`) solo se genera dentro de GitHub Actions o GitLab CI.
+This package has one maintainer and releases infrequently. The recommended option is **Trusted
+Publishing with `npm publish` and approval through a GitHub release**. The release tag explicitly
+authorizes publishing, which keeps the workflow short.
 
 ---
 
-## 12. Desarrollo, pruebas y CI
+## 11. Troubleshooting
+
+### Installation
+
+| Symptom | Cause | Solution |
+| --- | --- | --- |
+| `npm error engine Unsupported engine` | Node earlier than 18 | Install Node 18 or later. The package is ESM-only and uses `type: module` |
+| `npm error cannot find module .../dist/stdio.js` at startup | A tarball was packed without a build | Published versions run `prepack` to build before packaging. This symptom indicates a manually created local tarball |
+| `EACCES` writing to the npm cache (`.../_cacache/tmp`) when starting with `npx` | The user running the MCP client cannot write to the configured npm cache on that host | Add `npm_config_cache` to that server's `env` block and set it to a path the client user can create and write to. This fixes permissions for installation on the host and leaves App Store Connect credentials and permissions intact |
+| `command not found: appstoreconnect-mcp` after `npm install --global` | The global npm directory is missing from `PATH` | Check `npm bin -g` (or `npm prefix -g`) and add the directory to `PATH` |
+| `npx` appears to hang | The server is waiting for input on `stdin` | The server is waiting for JSON-RPC frames as expected. Press Ctrl+C to exit |
+
+### Authentication
+
+| Symptom | Cause | Solution |
+| --- | --- | --- |
+| `Configuration error {message=Missing required environment variable(s): APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_PATH.}` on `stderr`, with an empty `stdout` | Required settings are missing | Set `APPLE_KEY_ID`, `APPLE_ISSUER_ID`, and one of the two private key variables. The error goes to `stderr` and `stdout` stays empty by design |
+| `401` or `403` when calling the API | The `.p8` key does not match the `issuerId`, or the key has been revoked | Verify that the key and `issuerId` belong to the same App Store Connect team |
+| `403` from `GET /v1/apps` | The API key lacks permission to access the resources | Regenerate the key in App Store Connect → Integrations |
+| Passing the key through an environment variable instead of a file | `APPLE_PRIVATE_KEY` contains raw or base64-encoded PEM | Both formats work. For a file, `APPLE_PRIVATE_KEY_PATH` is the simplest option and avoids pasting line breaks |
+| The server cannot see the variables | The MCP client passes variables through its own `env` block | Check the `env` block in the client configuration. The child process inherits only the settings declared there |
+
+### Publishing
+
+| Symptom | Cause | Solution |
+| --- | --- | --- |
+| `npm error This command requires you to be logged in` | The repository and workflow lack a configured *trusted publisher*, or the workflow lacks `id-token: write` | Configure it in npmjs.com → Packages → Settings → Trusted publishing, with the workflow name `publish.yml` |
+| `npm error 402 Payment required` / `EOTP` | The registry already contains the version | Bump the version. Published versions are immutable |
+| `npm error Invalid package name` or `cannot publish over` | The version in `package.json` differs from the tag, or the version has already been published | Check the tag and the `package.json` version |
+| `npm warn No bin file found at dist/stdio.js` | The tarball was packed without a build | `prepack` builds before packaging. This message means the build failed. Check the build step |
+| `npm error unsupported engine` | Node earlier than 18 | Use Node 18 or later |
+
+npm requires CLI 11.5.1 or later and Node 22.14 or later for OIDC. Configure *trusted publishing*
+on the page of an existing package. Provenance (`--provenance`) is generated only in GitHub Actions
+or GitLab CI.
+
+---
+
+## 12. Development, testing, and CI
 
 ```bash
 npm run build                 # compilar a dist/
@@ -432,20 +426,19 @@ npm test                      # suite completa (mocks y fixtures, sin red)
 npx tsc -p tsconfig.test.json # comprobación de tipos de src/ y test/
 ```
 
-La suite usa fixtures y una clave ES256 generada en memoria: no se usa ninguna credencial real de
-Apple.
+The test suite uses fixtures and an ES256 key generated in memory. It uses no real Apple credentials.
 
-`.github/workflows/ci.yml` ejecuta `npm ci`, `npm run build`, `npx tsc -p tsconfig.test.json` y
-`npm test` en cada push a `main` y en cada pull request, con la matriz de Node 18 y 20. El pipeline
-también comprueba que el repositorio no menciona a ninguna organización.
+`.github/workflows/ci.yml` runs `npm ci`, `npm run build`, `npx tsc -p tsconfig.test.json`, and
+`npm test` on every push to `main` and every pull request, with a Node 18 and 20 matrix. The workflow
+also checks the repository for organization names.
 
 ---
 
-## 13. Transporte HTTP (fase posterior)
+## 13. HTTP transport (later phase)
 
-El transporte HTTP **no está implementado**. Cuando se aborde, quedan fijados estos requisitos:
+HTTP transport is **planned**. Its implementation must meet these requirements:
 
-- **Escucha en `127.0.0.1` por defecto**, nunca en `0.0.0.0`. `HOST` documentado para cambiarlo de forma explícita.
-- **OAuth es condición para exponerlo.** Un servidor HTTP sin autenticación no se publica: upstream acepta peticiones sin autenticar cuando `OAUTH_ENABLED` no está definido, y ese hueco no se reproduce aquí.
+- **Bind to `127.0.0.1` by default.** Document `HOST` as the explicit override. Never default to `0.0.0.0`.
+- **Require OAuth before exposing the server.** Upstream accepts unauthenticated requests when `OAUTH_ENABLED` is unset. This server must require authentication before it is exposed over HTTP.
 
-Referencia: upstream PR #6.
+Reference: upstream PR #6.
